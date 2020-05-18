@@ -2,6 +2,7 @@
 
 namespace robuust\heroku;
 
+use Craft;
 use craft\events\RegisterComponentTypesEvent;
 use craft\helpers\App;
 use craft\services\Volumes;
@@ -20,10 +21,15 @@ class Module extends \yii\base\Module
     {
         parent::init();
 
+        // Register this as an alias
+        Craft::setAlias('@robuust/heroku', dirname(__DIR__));
+
+        // Register volume
         Event::on(Volumes::class, Volumes::EVENT_REGISTER_VOLUME_TYPES, function (RegisterComponentTypesEvent $event) {
             $event->types[] = Local::class;
         });
 
+        // Process environment
         $this->heroku();
         $this->cloudcube();
     }
