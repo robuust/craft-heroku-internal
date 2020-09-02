@@ -3,11 +3,9 @@
 namespace robuust\heroku;
 
 use Craft;
-use craft\events\RegisterComponentTypesEvent;
+use craft\awss3\Volume;
 use craft\helpers\App;
-use craft\services\Volumes;
-use robuust\heroku\volumes\Local;
-use yii\base\Event;
+use craft\volumes\Local;
 
 /**
  * Heroku module.
@@ -24,14 +22,32 @@ class Module extends \yii\base\Module
         // Register this as an alias
         Craft::setAlias('@robuust/heroku', dirname(__DIR__));
 
-        // Register volume
-        Event::on(Volumes::class, Volumes::EVENT_REGISTER_VOLUME_TYPES, function (RegisterComponentTypesEvent $event) {
-            $event->types[] = Local::class;
-        });
-
-        // Process environment
+        // Process environment variables
         $this->heroku();
         $this->cloudcube();
+
+        // If this is the dev environment, use Local volumes instead of S3
+        if (Craft::$app->env === 'dev' || Craft::$app->env === 'test') {
+            Craft::$container->set(Volume::class, function ($container, $params, $config) {
+                if (empty($config['id'])) {
+                    return new Volume($config);
+                }
+
+                return new Local([
+                    'id' => $config['id'],
+                    'uid' => $config['uid'],
+                    'name' => $config['name'],
+                    'handle' => $config['handle'],
+                    'hasUrls' => $config['hasUrls'],
+                    'url' => "@web/uploads/{$config['handle']}",
+                    'path' => "@webroot/uploads/{$config['handle']}",
+                    'sortOrder' => $config['sortOrder'],
+                    'dateCreated' => $config['dateCreated'],
+                    'dateUpdated' => $config['dateUpdated'],
+                    'fieldLayoutId' => $config['fieldLayoutId'],
+                ]);
+            });
+        }
     }
 
     /**

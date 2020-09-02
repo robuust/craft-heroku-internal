@@ -1,0 +1,4 @@
+.vscode
+.php_cs.cache
+.php_cs.dist
+.DS_Store
