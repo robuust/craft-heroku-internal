@@ -27,7 +27,7 @@ class Module extends \yii\base\Module
         $this->cloudcube();
 
         // If this is the dev environment, use Local volumes instead of S3
-        if (Craft::$app->env === 'dev' || Craft::$app->env === 'test') {
+        if (Craft::$app->config->env === 'dev' || Craft::$app->config->env === 'test') {
             Craft::$container->set(Volume::class, function ($container, $params, $config) {
                 if (empty($config['id'])) {
                     return new Volume($config);
