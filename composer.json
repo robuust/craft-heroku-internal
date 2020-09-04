@@ -1,10 +1,10 @@
 {
-    "version": "1.1.1",
+    "version": "1.1.2",
     "name": "robuust/craft-heroku-internal",
     "description": "Module for internal use with Craft and Heroku",
     "require": {
         "php": "^7.0",
-        "craftcms/cms": "^3.4"
+        "craftcms/cms": "^3.5.8"
     },
     "autoload": {
         "psr-4": {
