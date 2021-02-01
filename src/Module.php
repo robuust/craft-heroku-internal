@@ -78,7 +78,7 @@ class Module extends \yii\base\Module
         $components = parse_url($cloudcube);
 
         // Get subfolder and host
-        $subfolder = substr($components['path'], 1);
+        $subfolder = isset($components['path']) ? substr($components['path'], 1) : '';
         $host = $components['scheme'].'://'.$components['host'];
 
         // Set subfolder to env
