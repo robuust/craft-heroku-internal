@@ -77,9 +77,13 @@ class Module extends \yii\base\Module
         // Dissect cloudcube url
         $components = parse_url($cloudcube);
 
-        // Get subfolder and host
+        // Get bucket, subfolder and host
+        $bucket = explode('.', $components['host'])[0];
         $subfolder = isset($components['path']) ? substr($components['path'], 1) : '';
         $host = $components['scheme'].'://'.$components['host'];
+
+        // Set bucket to env
+        static::setEnv('CLOUDCUBE_BUCKET', $bucket);
 
         // Set subfolder to env
         static::setEnv('CLOUDCUBE_SUBFOLDER', $subfolder);
