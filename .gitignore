@@ -1,4 +1,6 @@
 .vscode
 .php_cs.cache
-.php_cs.dist
+.php-cs-fixer.dist.php
 .DS_Store
+composer.lock
+vendor

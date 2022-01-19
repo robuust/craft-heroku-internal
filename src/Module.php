@@ -62,7 +62,7 @@ class Module extends \yii\base\Module
         $siteUrl = 'https://'.$herokuAppName.'.herokuapp.com';
 
         // Adjust siteurl for Heroku PR apps
-        static::setEnv('CRAFT_SITEURL', $siteUrl);
+        static::setEnv('CRAFT_SITEURL', $siteUrl, true);
     }
 
     /**
@@ -78,7 +78,7 @@ class Module extends \yii\base\Module
         $components = parse_url($cloudcube);
 
         // Get bucket, subfolder and host
-        $bucket = explode('.', $components['host'])[0];
+        list($bucket) = explode('.', $components['host']);
         $subfolder = isset($components['path']) ? substr($components['path'], 1) : '';
         $host = $components['scheme'].'://'.$components['host'];
 
@@ -97,10 +97,13 @@ class Module extends \yii\base\Module
      *
      * @param string $key
      * @param string $value
+     * @param bool   $override
      */
-    private static function setEnv(string $key, string $value)
+    private static function setEnv(string $key, string $value, $override = false)
     {
-        $_ENV[$key] = $_SERVER[$key] = $value;
-        putenv($key.'='.$value);
+        if ($override || !App::env($key)) {
+            $_ENV[$key] = $_SERVER[$key] = $value;
+            putenv($key.'='.$value);
+        }
     }
 }

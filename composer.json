@@ -1,14 +1,21 @@
 {
-    "version": "1.1.5",
+    "version": "1.1.6",
     "name": "robuust/craft-heroku-internal",
     "description": "Module for internal use with Craft and Heroku",
     "require": {
         "php": "^7.0 || ^8.0",
-        "craftcms/cms": "^3.5.8"
+        "craftcms/cms": "^3.5.8",
+        "craftcms/aws-s3": "^1.3"
     },
     "autoload": {
         "psr-4": {
             "robuust\\heroku\\": "src/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "yiisoft/yii2-composer": true,
+            "craftcms/plugin-installer": true
         }
     }
 }
