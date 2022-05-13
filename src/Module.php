@@ -3,9 +3,9 @@
 namespace robuust\heroku;
 
 use Craft;
-use craft\awss3\Volume;
+use craft\awss3\Fs;
+use craft\fs\Local;
 use craft\helpers\App;
-use craft\volumes\Local;
 
 /**
  * Heroku module.
@@ -26,25 +26,19 @@ class Module extends \yii\base\Module
         $this->heroku();
         $this->cloudcube();
 
-        // If this is the dev environment, use Local volumes instead of S3
+        // If this is the dev environment, use Local filesystem instead of S3
         if (Craft::$app->env === 'dev' || Craft::$app->env === 'test') {
-            Craft::$container->set(Volume::class, function ($container, $params, $config) {
-                if (empty($config['id'])) {
-                    return new Volume($config);
+            Craft::$container->set(Fs::class, function ($container, $params, $config) {
+                if (empty($config)) {
+                    return new Fs($config);
                 }
 
                 return new Local([
-                    'id' => $config['id'],
-                    'uid' => $config['uid'],
                     'name' => $config['name'],
                     'handle' => $config['handle'],
                     'hasUrls' => $config['hasUrls'],
                     'url' => "@web/uploads/{$config['handle']}",
                     'path' => "@webroot/uploads/{$config['handle']}",
-                    'sortOrder' => $config['sortOrder'],
-                    'dateCreated' => $config['dateCreated'],
-                    'dateUpdated' => $config['dateUpdated'],
-                    'fieldLayoutId' => $config['fieldLayoutId'],
                 ]);
             });
         }
