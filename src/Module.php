@@ -26,7 +26,6 @@ class Module extends \yii\base\Module
         Craft::setAlias('@robuust/heroku', dirname(__DIR__));
 
         // Process environment variables
-        $appName = $this->heroku();
         $this->cloudcube();
 
         // If this is the dev environment, use Local filesystem instead of S3
@@ -47,7 +46,8 @@ class Module extends \yii\base\Module
         }
 
         // Toggle workers
-        if ($appName && !Craft::$app->getConfig()->getGeneral()->runQueueAutomatically) {
+        if (!Craft::$app->getConfig()->getGeneral()->runQueueAutomatically) {
+            $appName = App::env('HEROKU_APP_NAME');
             $client = new Client(['apiKey' => App::env('HEROKU_API_KEY')]);
 
             Event::on(Queue::class, 'after*', function (Event $event) use ($client, $appName) {
@@ -58,25 +58,6 @@ class Module extends \yii\base\Module
                 $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => $quantity]);
             });
         }
-    }
-
-    /**
-     * Set heroku env.
-     *
-     * @return string|null
-     */
-    private function heroku(): ?string
-    {
-        if (!($herokuAppName = App::env('HEROKU_APP_NAME'))) {
-            return null;
-        }
-
-        $siteUrl = 'https://'.$herokuAppName.'.herokuapp.com';
-
-        // Adjust siteurl for Heroku PR apps
-        static::setEnv('CRAFT_SITEURL', $siteUrl, true);
-
-        return $herokuAppName;
     }
 
     /**
