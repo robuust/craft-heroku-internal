@@ -5,7 +5,11 @@
     "require": {
         "php": "^7.0 || ^8.0",
         "craftcms/cms": "^4.0",
-        "craftcms/aws-s3": "^2.0"
+        "craftcms/aws-s3": "^2.0",
+        "php-heroku-client/php-heroku-client": "^4.0"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.2"
     },
     "autoload": {
         "psr-4": {

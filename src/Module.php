@@ -6,6 +6,9 @@ use Craft;
 use craft\awss3\Fs;
 use craft\fs\Local;
 use craft\helpers\App;
+use craft\queue\Queue;
+use HerokuClient\Client;
+use yii\base\Event;
 
 /**
  * Heroku module.
@@ -23,7 +26,7 @@ class Module extends \yii\base\Module
         Craft::setAlias('@robuust/heroku', dirname(__DIR__));
 
         // Process environment variables
-        $this->heroku();
+        $appName = $this->heroku();
         $this->cloudcube();
 
         // If this is the dev environment, use Local filesystem instead of S3
@@ -42,21 +45,42 @@ class Module extends \yii\base\Module
                 ]);
             });
         }
+
+        // Toggle workers
+        if ($appName && !Craft::$app->getConfig()->getGeneral()->runQueueAutomatically) {
+            $client = new Client(['apiKey' => App::env('HEROKU_API_KEY')]);
+
+            Event::on(Queue::class, 'after*', function () use ($client, $appName) {
+                $pending = $this->sender->getTotalJobs() - $this->sender->getTotalFailed();
+                $currentDynos = $client->get('apps/'.$appName.'/formation/worker')->quantity;
+
+                if ($pending > 0 && $currentDynos < 1) {
+                    $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => 1]);
+                }
+                if ($pending < 1 && $currentDynos > 0) {
+                    $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => 0]);
+                }
+            });
+        }
     }
 
     /**
      * Set heroku env.
+     *
+     * @return string|null
      */
-    private function heroku()
+    private function heroku(): ?string
     {
         if (!($herokuAppName = App::env('HEROKU_APP_NAME'))) {
-            return;
+            return null;
         }
 
         $siteUrl = 'https://'.$herokuAppName.'.herokuapp.com';
 
         // Adjust siteurl for Heroku PR apps
         static::setEnv('CRAFT_SITEURL', $siteUrl, true);
+
+        return $herokuAppName;
     }
 
     /**
