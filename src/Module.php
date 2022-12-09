@@ -55,7 +55,12 @@ class Module extends \yii\base\Module
                 if ($event->name != Queue::EVENT_AFTER_PUSH && ($event->sender->getTotalJobs() - $event->sender->getTotalFailed()) == 1) {
                     $quantity = 0;
                 }
-                $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => $quantity]);
+
+                try {
+                    $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => $quantity]);
+                } catch (\Exception $e) {
+                    Craft::error($e->getMessage());
+                }
             });
         }
     }
