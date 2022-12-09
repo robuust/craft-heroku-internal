@@ -46,8 +46,8 @@ class Module extends \yii\base\Module
         }
 
         // Toggle workers
-        if (!Craft::$app->getConfig()->getGeneral()->runQueueAutomatically) {
-            $appName = App::env('HEROKU_APP_NAME');
+        $appName = App::env('HEROKU_APP_NAME');
+        if ($appName && !Craft::$app->getConfig()->getGeneral()->runQueueAutomatically) {
             $client = new Client(['apiKey' => App::env('HEROKU_API_KEY')]);
 
             Event::on(Queue::class, 'after*', function (Event $event) use ($client, $appName) {
