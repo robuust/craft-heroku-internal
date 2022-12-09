@@ -51,15 +51,11 @@ class Module extends \yii\base\Module
             $client = new Client(['apiKey' => App::env('HEROKU_API_KEY')]);
 
             Event::on(Queue::class, 'after*', function (Event $event) use ($client, $appName) {
-                $pending = $event->sender->getTotalJobs() - $event->sender->getTotalFailed();
-                $currentDynos = $client->get('apps/'.$appName.'/formation/worker')->quantity;
-
-                if ($pending > 0 && $currentDynos < 1) {
-                    $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => 1]);
+                $quantity = 1;
+                if ($event->name != Queue::EVENT_AFTER_PUSH && ($event->sender->getTotalJobs() - $event->sender->getTotalFailed()) == 1) {
+                    $quantity = 0;
                 }
-                if ($pending < 1 && $currentDynos > 0) {
-                    $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => 0]);
-                }
+                $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => $quantity]);
             });
         }
     }
