@@ -50,8 +50,8 @@ class Module extends \yii\base\Module
         if ($appName && !Craft::$app->getConfig()->getGeneral()->runQueueAutomatically) {
             $client = new Client(['apiKey' => App::env('HEROKU_API_KEY')]);
 
-            Event::on(Queue::class, 'after*', function () use ($client, $appName) {
-                $pending = $this->sender->getTotalJobs() - $this->sender->getTotalFailed();
+            Event::on(Queue::class, 'after*', function (Event $event) use ($client, $appName) {
+                $pending = $event->sender->getTotalJobs() - $event->sender->getTotalFailed();
                 $currentDynos = $client->get('apps/'.$appName.'/formation/worker')->quantity;
 
                 if ($pending > 0 && $currentDynos < 1) {
