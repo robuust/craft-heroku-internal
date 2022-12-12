@@ -6,9 +6,9 @@ use Craft;
 use craft\awss3\Fs;
 use craft\fs\Local;
 use craft\helpers\App;
-use craft\queue\Queue;
 use HerokuClient\Client;
 use yii\base\Event;
+use yii\queue\Queue;
 
 /**
  * Heroku module.
@@ -53,7 +53,7 @@ class Module extends \yii\base\Module
 
             Event::on(Queue::class, 'after*', function (Event $event) use ($client, $appName) {
                 $quantity = 1;
-                if ($event->name != Queue::EVENT_AFTER_PUSH && ($event->sender->getTotalJobs() - $event->sender->getTotalFailed()) == 1) {
+                if ($event->name != Queue::EVENT_AFTER_PUSH && (Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed()) == 1) {
                     $quantity = 0;
                 }
 
