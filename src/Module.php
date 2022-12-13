@@ -52,8 +52,13 @@ class Module extends \yii\base\Module
             $client = new Client(['apiKey' => $apiKey]);
 
             Event::on(Queue::class, 'after*', function (Event $event) use ($client, $appName) {
+                $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
+                if ($jobs > 1) {
+                    return;
+                }
+
                 $quantity = 1;
-                if ($event->name != Queue::EVENT_AFTER_PUSH && (Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed()) == 1) {
+                if ($event->name != Queue::EVENT_AFTER_PUSH && $jobs == 1) {
                     $quantity = 0;
                 }
 
