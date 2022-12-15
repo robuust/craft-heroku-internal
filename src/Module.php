@@ -52,18 +52,26 @@ class Module extends \yii\base\Module
             $client = new Client(['apiKey' => $apiKey]);
 
             Event::on(Queue::class, 'after*', function (Event $event) use ($client, $appName) {
-                $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
-                if ($jobs > 1) {
-                    return;
-                }
-
-                $quantity = 1;
-                if ($event->name != Queue::EVENT_AFTER_PUSH && $jobs == 1) {
-                    $quantity = 0;
+                switch ($event->name) {
+                    case Queue::EVENT_AFTER_PUSH:
+                        $currentDynos = Craft::$app->getCache()->getOrSet('currentDynos', fn () => $client->get('apps/'.$appName.'/formation/worker')->quantity);
+                        if ($currentDynos > 0) {
+                            return;
+                        }
+                        $quantity = 1;
+                        break;
+                    default:
+                        $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
+                        if ($jobs > 1) {
+                            return;
+                        }
+                        $quantity = 0;
+                        break;
                 }
 
                 try {
                     $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => $quantity]);
+                    Craft::$app->getCache()->set('currentDynos', $quantity);
                 } catch (\Exception $e) {
                     Craft::error($e->getMessage());
                 }
