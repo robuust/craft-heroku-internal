@@ -6,6 +6,9 @@ use Craft;
 use craft\awss3\Volume;
 use craft\helpers\App;
 use craft\volumes\Local;
+use HerokuClient\Client;
+use yii\base\Event;
+use yii\queue\Queue;
 
 /**
  * Heroku module.
@@ -23,7 +26,6 @@ class Module extends \yii\base\Module
         Craft::setAlias('@robuust/heroku', dirname(__DIR__));
 
         // Process environment variables
-        $this->heroku();
         $this->cloudcube();
 
         // If this is the dev environment, use Local volumes instead of S3
@@ -48,21 +50,39 @@ class Module extends \yii\base\Module
                 ]);
             });
         }
-    }
 
-    /**
-     * Set heroku env.
-     */
-    private function heroku()
-    {
-        if (!($herokuAppName = App::env('HEROKU_APP_NAME'))) {
-            return;
+        // Toggle workers
+        $appName = App::env('HEROKU_APP_NAME');
+        $apiKey = App::env('HEROKU_API_KEY');
+        if ($appName && $apiKey && !Craft::$app->getConfig()->getGeneral()->runQueueAutomatically) {
+            $client = new Client(['apiKey' => $apiKey]);
+
+            Event::on(Queue::class, 'after*', function (Event $event) use ($client, $appName) {
+                switch ($event->name) {
+                    case Queue::EVENT_AFTER_PUSH:
+                        $currentDynos = Craft::$app->getCache()->getOrSet('currentDynos', fn () => $client->get('apps/'.$appName.'/formation/worker')->quantity);
+                        if ($currentDynos > 0) {
+                            return;
+                        }
+                        $quantity = 1;
+                        break;
+                    default:
+                        $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
+                        if ($jobs > 1) {
+                            return;
+                        }
+                        $quantity = 0;
+                        break;
+                }
+
+                try {
+                    $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => $quantity]);
+                    Craft::$app->getCache()->set('currentDynos', $quantity);
+                } catch (\Exception $e) {
+                    Craft::error($e->getMessage());
+                }
+            });
         }
-
-        $siteUrl = 'https://'.$herokuAppName.'.herokuapp.com';
-
-        // Adjust siteurl for Heroku PR apps
-        static::setEnv('CRAFT_SITEURL', $siteUrl, true);
     }
 
     /**
