@@ -26,6 +26,7 @@ class Module extends \yii\base\Module
         Craft::setAlias('@robuust/heroku', dirname(__DIR__));
 
         // Process environment variables
+        $this->heroku();
         $this->cloudcube();
 
         // If this is the dev environment, use Local volumes instead of S3
@@ -83,6 +84,23 @@ class Module extends \yii\base\Module
                 }
             });
         }
+    }
+
+    /**
+     * Set heroku env.
+     */
+    private function heroku()
+    {
+        $reviewApp = App::env('HEROKU_BRANCH');
+
+        if (!$reviewApp || !($herokuAppName = App::env('HEROKU_APP_NAME'))) {
+            return;
+        }
+
+        $siteUrl = 'https://'.$herokuAppName.'.herokuapp.com';
+
+        // Adjust siteurl for Heroku review apps
+        static::setEnv('CRAFT_SITEURL', $siteUrl, true);
     }
 
     /**
