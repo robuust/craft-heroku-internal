@@ -1,9 +1,10 @@
 {
-    "version": "1.3.0",
+    "version": "1.3.1",
     "name": "robuust/craft-heroku-internal",
     "description": "Module for internal use with Craft and Heroku",
     "require": {
-        "php": "^7.0 || ^8.0",
+        "php": "^8.0",
+        "ext-pcntl": "*",
         "craftcms/cms": "^3.5.8",
         "craftcms/aws-s3": "^1.3",
         "php-heroku-client/php-heroku-client": "^4.0"
@@ -19,7 +20,8 @@
     "config": {
         "allow-plugins": {
             "yiisoft/yii2-composer": true,
-            "craftcms/plugin-installer": true
+            "craftcms/plugin-installer": true,
+            "php-http/discovery": true
         }
     }
 }
