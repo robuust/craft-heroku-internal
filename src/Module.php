@@ -25,6 +25,11 @@ class Module extends \yii\base\Module
         // Register this as an alias
         Craft::setAlias('@robuust/heroku', dirname(__DIR__));
 
+        // Register console controller
+        if (Craft::$app->getRequest()->getIsConsoleRequest()) {
+            $this->controllerNamespace = 'robuust\heroku\console\controllers';
+        }
+
         // Process environment variables
         $this->heroku();
         $this->cloudcube();
