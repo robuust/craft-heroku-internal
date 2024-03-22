@@ -64,7 +64,8 @@ class Module extends \yii\base\Module
                         if ($currentDynos > 0) {
                             return;
                         }
-                        $quantity = 1;
+                        $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
+                        $quantity = ceil($jobs / 100);
                         break;
                     default:
                         $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
