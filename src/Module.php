@@ -70,7 +70,8 @@ class Module extends \yii\base\Module
                         if ($currentDynos > 0) {
                             return;
                         }
-                        $quantity = 1;
+                        $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
+                        $quantity = ceil($jobs / 100);
                         break;
                     default:
                         $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
@@ -82,8 +83,8 @@ class Module extends \yii\base\Module
                 }
 
                 try {
-                    $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => $quantity]);
                     Craft::$app->getCache()->set('currentDynos', $quantity);
+                    $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => $quantity]);
                 } catch (\Exception $e) {
                     Craft::error($e->getMessage());
                 }
