@@ -77,8 +77,8 @@ class Module extends \yii\base\Module
                 }
 
                 try {
-                    Craft::$app->getCache()->set('currentDynos', $quantity);
                     $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => $quantity]);
+                    Craft::$app->getCache()->set('currentDynos', $quantity);
                 } catch (\Exception $e) {
                     Craft::error($e->getMessage());
                 }
