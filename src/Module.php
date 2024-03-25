@@ -5,10 +5,11 @@ namespace robuust\heroku;
 use Craft;
 use craft\awss3\Volume;
 use craft\helpers\App;
+use craft\queue\Queue;
 use craft\volumes\Local;
 use HerokuClient\Client;
 use yii\base\Event;
-use yii\queue\Queue;
+use yii\queue\Queue as BaseQueue;
 
 /**
  * Heroku module.
@@ -63,31 +64,27 @@ class Module extends \yii\base\Module
         if ($appName && $apiKey && !Craft::$app->getConfig()->getGeneral()->runQueueAutomatically) {
             $client = new Client(['apiKey' => $apiKey]);
 
-            Event::on(Queue::class, 'after*', function (Event $event) use ($client, $appName) {
-                switch ($event->name) {
-                    case Queue::EVENT_AFTER_PUSH:
-                        $currentDynos = Craft::$app->getCache()->getOrSet('currentDynos', fn () => $client->get('apps/'.$appName.'/formation/worker')->quantity);
-                        if ($currentDynos > 0) {
-                            return;
-                        }
-                        $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
-                        $quantity = ceil($jobs / 100);
-                        break;
-                    default:
-                        $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
-                        if ($jobs > 1) {
-                            return;
-                        }
-                        $quantity = 0;
-                        break;
+            // Start worker(s) after new jobs are pushed
+            Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (Event $event) use ($client, $appName) {
+                $currentDynos = Craft::$app->getCache()->getOrSet('currentDynos', fn () => $client->get('apps/'.$appName.'/formation/worker')->quantity);
+                if ($currentDynos > 0) {
+                    return;
                 }
+                $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
+                $quantity = max(ceil($jobs / 100), 10);
 
-                try {
-                    Craft::$app->getCache()->set('currentDynos', $quantity);
-                    $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => $quantity]);
-                } catch (\Exception $e) {
-                    Craft::error($e->getMessage());
+                static::setWorkers($client, $quantity);
+            });
+
+            // Shutdown worker(s) after all jobs are executed
+            Event::on(Queue::class, 'afterE*', function (Event $event) use ($client) {
+                $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
+                if ($jobs > 0) {
+                    return;
                 }
+                $quantity = 0;
+
+                static::setWorkers($client, $quantity);
             });
         }
     }
@@ -95,7 +92,7 @@ class Module extends \yii\base\Module
     /**
      * Set heroku env.
      */
-    private function heroku()
+    private function heroku(): void
     {
         $reviewApp = App::env('HEROKU_BRANCH');
 
@@ -112,7 +109,7 @@ class Module extends \yii\base\Module
     /**
      * Set cloudcube env.
      */
-    private function cloudcube()
+    private function cloudcube(): void
     {
         if (!($cloudcube = App::env('CLOUDCUBE_URL'))) {
             return;
@@ -143,11 +140,29 @@ class Module extends \yii\base\Module
      * @param string $value
      * @param bool   $override
      */
-    private static function setEnv(string $key, string $value, $override = false)
+    private static function setEnv(string $key, string $value, $override = false): void
     {
         if ($override || !App::env($key)) {
             $_ENV[$key] = $_SERVER[$key] = $value;
             putenv($key.'='.$value);
+        }
+    }
+
+    /**
+     * Set worker quantity.
+     *
+     * @param Client $client
+     * @param int    $quantity
+     */
+    private static function setWorkers(Client $client, int $quantity): void
+    {
+        $appName = App::env('HEROKU_APP_NAME');
+
+        try {
+            $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => $quantity]);
+            Craft::$app->getCache()->set('currentDynos', $quantity);
+        } catch (\Exception $e) {
+            Craft::error($e->getMessage());
         }
     }
 }
