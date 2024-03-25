@@ -89,7 +89,7 @@ class Module extends \yii\base\Module
     /**
      * Set heroku env.
      */
-    private function heroku()
+    private function heroku(): void
     {
         $reviewApp = App::env('HEROKU_BRANCH');
 
@@ -106,7 +106,7 @@ class Module extends \yii\base\Module
     /**
      * Set cloudcube env.
      */
-    private function cloudcube()
+    private function cloudcube(): void
     {
         if (!($cloudcube = App::env('CLOUDCUBE_URL'))) {
             return;
@@ -137,7 +137,7 @@ class Module extends \yii\base\Module
      * @param string $value
      * @param bool   $override
      */
-    private static function setEnv(string $key, string $value, $override = false)
+    private static function setEnv(string $key, string $value, $override = false): void
     {
         if ($override || !App::env($key)) {
             $_ENV[$key] = $_SERVER[$key] = $value;
