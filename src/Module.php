@@ -67,24 +67,21 @@ class Module extends \yii\base\Module
             // Start worker(s) after new jobs are pushed
             Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (Event $event) use ($client, $appName) {
                 $currentDynos = Craft::$app->getCache()->getOrSet('currentDynos', fn () => $client->get('apps/'.$appName.'/formation/worker')->quantity);
-                if ($currentDynos > 0) {
-                    return;
-                }
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
                 $quantity = max(ceil($jobs / 100), 10);
 
-                static::setWorkers($client, $quantity);
+                if ($quantity != $currentDynos) {
+                    static::setWorkers($client, $quantity);
+                }
             });
 
             // Shutdown worker(s) after all jobs are executed
             Event::on(Queue::class, 'afterE*', function (Event $event) use ($client) {
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
-                if ($jobs > 0) {
-                    return;
-                }
-                $quantity = 0;
 
-                static::setWorkers($client, $quantity);
+                if ($jobs == 0) {
+                    static::setWorkers($client, 0);
+                }
             });
         }
     }
