@@ -65,7 +65,7 @@ class Module extends \yii\base\Module
                             return;
                         }
                         $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
-                        $quantity = ceil($jobs / 100);
+                        $quantity = max(ceil($jobs / 100), 10);
                         break;
                     default:
                         $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
