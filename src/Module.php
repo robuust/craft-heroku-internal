@@ -68,7 +68,7 @@ class Module extends \yii\base\Module
             Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (Event $event) use ($client, $appName) {
                 $currentDynos = Craft::$app->getCache()->getOrSet('currentDynos', fn () => $client->get('apps/'.$appName.'/formation/worker')->quantity);
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
-                $quantity = max(ceil($jobs / 100), 10);
+                $quantity = min(ceil($jobs / 100), 10);
 
                 if ($quantity > $currentDynos) {
                     static::setWorkers($client, $quantity);
