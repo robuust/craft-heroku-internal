@@ -70,7 +70,7 @@ class Module extends \yii\base\Module
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
                 $quantity = max(ceil($jobs / 100), 10);
 
-                if ($quantity != $currentDynos) {
+                if ($quantity > $currentDynos) {
                     static::setWorkers($client, $quantity);
                 }
             });
