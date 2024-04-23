@@ -1,5 +1,5 @@
 {
-    "version": "1.5.4",
+    "version": "1.5.5",
     "name": "robuust/craft-heroku-internal",
     "description": "Module for internal use with Craft and Heroku",
     "require": {

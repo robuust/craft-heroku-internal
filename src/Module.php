@@ -17,6 +17,11 @@ use yii\queue\Queue as BaseQueue;
 class Module extends \yii\base\Module
 {
     /**
+     * {@inheritdoc}
+     */
+    public $controllerNamespace = 'robuust\heroku\console\controllers';
+
+    /**
      * Initializes the module.
      */
     public function init()
@@ -25,11 +30,6 @@ class Module extends \yii\base\Module
 
         // Register this as an alias
         Craft::setAlias('@robuust/heroku', dirname(__DIR__));
-
-        // Register console controller
-        if (Craft::$app->getRequest()->getIsConsoleRequest()) {
-            $this->controllerNamespace = 'robuust\heroku\console\controllers';
-        }
 
         // Process environment variables
         $this->heroku();
