@@ -99,8 +99,14 @@ class Module extends \yii\base\Module
 
         $siteUrl = 'https://'.$herokuAppName.'.herokuapp.com';
 
-        // Adjust siteurl for Heroku review apps
-        static::setEnv('CRAFT_SITEURL', $siteUrl, true);
+        // Adjust siteurl(s) for Heroku review apps
+        $env = getenv();
+        foreach ($env as $key => $value) {
+            if (str_starts_with($key, 'CRAFT_SITEURL')) {
+                $components = parse_url($value);
+                static::setEnv($key, $siteUrl.@$components['path'], true);
+            }
+        }
     }
 
     /**
