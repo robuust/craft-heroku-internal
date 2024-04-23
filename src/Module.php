@@ -17,6 +17,11 @@ use yii\queue\Queue as BaseQueue;
 class Module extends \yii\base\Module
 {
     /**
+     * {@inheritdoc}
+     */
+    public $controllerNamespace = 'robuust\heroku\console\controllers';
+
+    /**
      * Initializes the module.
      */
     public function init()
@@ -26,14 +31,9 @@ class Module extends \yii\base\Module
         // Register this as an alias
         Craft::setAlias('@robuust/heroku', dirname(__DIR__));
 
-        // Register console controller
-        if (Craft::$app->getRequest()->getIsConsoleRequest()) {
-            $this->controllerNamespace = 'robuust\heroku\console\controllers';
-        }
-
         // Process environment variables
-        $this->heroku();
-        $this->cloudcube();
+        static::heroku();
+        static::cloudcube();
 
         // If this is the dev environment, use Local volumes instead of S3
         if (Craft::$app->env === 'dev' || Craft::$app->env === 'test') {
@@ -89,7 +89,7 @@ class Module extends \yii\base\Module
     /**
      * Set heroku env.
      */
-    private function heroku(): void
+    public static function heroku(): void
     {
         $reviewApp = App::env('HEROKU_BRANCH');
 
@@ -99,14 +99,20 @@ class Module extends \yii\base\Module
 
         $siteUrl = 'https://'.$herokuAppName.'.herokuapp.com';
 
-        // Adjust siteurl for Heroku review apps
-        static::setEnv('CRAFT_SITEURL', $siteUrl, true);
+        // Adjust siteurl(s) for Heroku review apps
+        $env = getenv();
+        foreach ($env as $key => $value) {
+            if (str_starts_with($key, 'CRAFT_SITEURL')) {
+                $components = parse_url($value);
+                static::setEnv($key, $siteUrl.@$components['path'], true);
+            }
+        }
     }
 
     /**
      * Set cloudcube env.
      */
-    private function cloudcube(): void
+    private static function cloudcube(): void
     {
         if (!($cloudcube = App::env('CLOUDCUBE_URL'))) {
             return;
