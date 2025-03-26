@@ -7,6 +7,8 @@ use craft\awss3\Fs;
 use craft\fs\Local;
 use craft\helpers\App;
 use craft\queue\Queue;
+use craft\web\Request;
+use craft\web\Response;
 use HerokuClient\Client;
 use yii\base\Event;
 use yii\queue\Queue as BaseQueue;
@@ -51,6 +53,22 @@ class Module extends \yii\base\Module
                 ]);
             });
         }
+
+        // If the request is a Turbo request and the method is POST
+        // And the response is a redirect
+        // Change status code to a 303 for Turbo
+        // See https://turbo.hotwired.dev/handbook/drive#redirecting-after-a-form-submission
+        Event::on(Response::class, Response::EVENT_BEFORE_SEND, function (Event $event) {
+            /** @var Response $response */
+            $response = $event->sender;
+            /** @var Request $request */
+            $request = Craft::$app->getRequest();
+            $headers = $request->getHeaders();
+
+            if ($headers->has('X-Turbo-Request-Id') && $request->getMethod() === 'POST' && $response->getIsRedirection()) {
+                $response->setStatusCode(303);
+            }
+        });
 
         // Toggle workers
         $appName = App::env('HEROKU_APP_NAME');
