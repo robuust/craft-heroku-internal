@@ -6,10 +6,12 @@ use Craft;
 use craft\awss3\Fs;
 use craft\fs\Local;
 use craft\helpers\App;
+use craft\mail\transportadapters\Smtp;
 use craft\queue\Queue;
 use craft\web\Request;
 use craft\web\Response;
 use HerokuClient\Client;
+use RuntimeException;
 use yii\base\Event;
 use yii\queue\Queue as BaseQueue;
 
@@ -36,6 +38,23 @@ class Module extends \yii\base\Module
         // Process environment variables
         static::heroku();
         static::cloudcube();
+
+        // Require mailtrap on dev/test
+        $dsn = getenv('MAILTRAP_DSN');
+        if (in_array(Craft::$app->env, ['dev', 'test']) && !$dsn) {
+            throw new RuntimeException('MAILTRAP_DSN environment variable is not set.');
+        }
+
+        // Configure Mailtrap mailer
+        if ($dsn) {
+            $config = App::mailerConfig();
+            $config['transport'] = [
+                'type' => Smtp::class,
+                'dsn' => $dsn,
+            ];
+
+            Craft::$app->set('mailer', Craft::createObject($config));
+        }
 
         // If this is the dev environment, use Local filesystem instead of S3
         if (Craft::$app->env === 'dev' || Craft::$app->env === 'test') {
