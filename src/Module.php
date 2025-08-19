@@ -39,9 +39,9 @@ class Module extends \yii\base\Module
         static::heroku();
         static::cloudcube();
 
-        // Require mailtrap on dev/test
+        // Require mailtrap on dev
         $dsn = getenv('MAILTRAP_DSN');
-        if (in_array(Craft::$app->env, ['dev', 'test']) && !$dsn) {
+        if (Craft::$app->env === 'dev' && !$dsn) {
             throw new RuntimeException('MAILTRAP_DSN environment variable is not set.');
         }
 
