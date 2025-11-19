@@ -3,11 +3,11 @@
 namespace robuust\heroku;
 
 use Craft;
-use craft\awss3\Volume;
+use craft\awss3\Fs;
+use craft\fs\Local;
 use craft\helpers\App;
 use craft\mail\transportadapters\Smtp;
 use craft\queue\Queue;
-use craft\volumes\Local;
 use craft\web\Request;
 use craft\web\Response;
 use HerokuClient\Client;
@@ -56,25 +56,19 @@ class Module extends \yii\base\Module
             Craft::$app->set('mailer', Craft::createObject($config));
         }
 
-        // If this is the dev environment, use Local volumes instead of S3
+        // If this is the dev environment, use Local filesystem instead of S3
         if (Craft::$app->env === 'dev' || Craft::$app->env === 'test') {
-            Craft::$container->set(Volume::class, function ($container, $params, $config) {
-                if (empty($config['id'])) {
-                    return new Volume($config);
+            Craft::$container->set(Fs::class, function ($container, $params, $config) {
+                if (empty($config)) {
+                    return new Fs($config);
                 }
 
                 return new Local([
-                    'id' => $config['id'],
-                    'uid' => $config['uid'],
                     'name' => $config['name'],
                     'handle' => $config['handle'],
                     'hasUrls' => $config['hasUrls'],
                     'url' => "@web/uploads/{$config['handle']}",
                     'path' => "@webroot/uploads/{$config['handle']}",
-                    'sortOrder' => $config['sortOrder'],
-                    'dateCreated' => $config['dateCreated'],
-                    'dateUpdated' => $config['dateUpdated'],
-                    'fieldLayoutId' => $config['fieldLayoutId'],
                 ]);
             });
         }
@@ -112,8 +106,8 @@ class Module extends \yii\base\Module
                 }
             });
 
-            // Shutdown worker(s) after all jobs are executed
-            Event::on(Queue::class, 'afterE*', function (Event $event) use ($client) {
+            // Shutdown worker(s) after all jobs are executed and released
+            Event::on(Queue::class, Queue::EVENT_AFTER_EXEC_AND_RELEASE, function (Event $event) use ($client) {
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
 
                 if ($jobs == 0) {
