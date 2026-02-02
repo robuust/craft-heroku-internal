@@ -130,7 +130,7 @@ class Module extends \yii\base\Module
         static::setEnv('CLOUDCUBE_BUCKET', $bucket);
 
         // Set subfolder to env
-        static::setEnv('CLOUDCUBE_SUBFOLDER', $subfolder);
+        static::setEnv('CLOUDCUBE_SUBFOLDER', $subfolder ?? '');
 
         // Set host to env
         static::setEnv('CLOUDCUBE_HOST', $host);
