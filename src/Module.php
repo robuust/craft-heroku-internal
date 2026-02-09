@@ -13,6 +13,7 @@ use craft\web\Response;
 use HerokuClient\Client;
 use RuntimeException;
 use yii\base\Event;
+use yii\queue\PushEvent;
 use yii\queue\Queue as BaseQueue;
 
 /**
@@ -96,7 +97,7 @@ class Module extends \yii\base\Module
             $client = new Client(['apiKey' => $apiKey]);
 
             // Start worker(s) after new jobs are pushed
-            Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (Event $event) use ($client, $appName) {
+            Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (PushEvent $event) use ($client, $appName) {
                 $currentDynos = Craft::$app->getCache()->getOrSet('currentDynos', fn () => $client->get('apps/'.$appName.'/formation/worker')->quantity);
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
                 $quantity = min(ceil($jobs / 100), 10);
@@ -154,7 +155,7 @@ class Module extends \yii\base\Module
 
         // Get bucket, subfolder and host
         list($bucket) = explode('.', $components['host']);
-        $subfolder = isset($components['path']) ? substr($components['path'], 1) : '';
+        $subfolder = isset($components['path']) ? substr($components['path'], 1) : '/';
         $host = $components['scheme'].'://'.$components['host'];
 
         // Set bucket to env
