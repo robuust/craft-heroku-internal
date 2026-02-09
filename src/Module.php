@@ -3,8 +3,6 @@
 namespace robuust\heroku;
 
 use Craft;
-use craft\awss3\Fs;
-use craft\fs\Local;
 use craft\helpers\App;
 use craft\mail\transportadapters\Smtp;
 use craft\queue\Queue;
@@ -55,23 +53,6 @@ class Module extends \yii\base\Module
             ];
 
             Craft::$app->set('mailer', Craft::createObject($config));
-        }
-
-        // If this is the dev environment, use Local filesystem instead of S3
-        if (Craft::$app->env === 'dev' || Craft::$app->env === 'test') {
-            Craft::$container->set(Fs::class, function ($container, $params, $config) {
-                if (empty($config)) {
-                    return new Fs($config);
-                }
-
-                return new Local([
-                    'name' => $config['name'],
-                    'handle' => $config['handle'],
-                    'hasUrls' => $config['hasUrls'],
-                    'url' => "@web/uploads/{$config['handle']}",
-                    'path' => "@webroot/uploads/{$config['handle']}",
-                ]);
-            });
         }
 
         // If the request is a Turbo request and the method is POST
