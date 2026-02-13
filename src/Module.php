@@ -79,7 +79,7 @@ class Module extends \yii\base\Module
             Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_EXEC, function (Event $event) use ($client) {
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
 
-                if ($jobs == 0) {
+                if ($jobs === 0) {
                     static::setWorkers($client, 0);
                 }
             });
