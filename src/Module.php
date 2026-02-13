@@ -65,7 +65,7 @@ class Module extends \yii\base\Module
             $client = new Client(['apiKey' => $apiKey]);
 
             // Start worker(s) after new jobs are pushed
-            Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (Event $event) use ($client, $appName) {
+            Event::on(Queue::class, Queue::EVENT_AFTER_PUSH, function (Event $event) use ($client, $appName) {
                 $currentDynos = Craft::$app->getCache()->getOrSet('currentDynos', fn () => $client->get('apps/'.$appName.'/formation/worker')->quantity);
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
                 $quantity = min(ceil($jobs / 100), 10);
@@ -76,7 +76,7 @@ class Module extends \yii\base\Module
             });
 
             // Shutdown worker(s) after all jobs are executed
-            Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_EXEC, function (Event $event) use ($client) {
+            Event::on(Queue::class, 'afterE*', function (Event $event) use ($client) {
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
 
                 if ($jobs === 0) {
