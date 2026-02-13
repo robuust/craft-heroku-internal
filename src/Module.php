@@ -123,10 +123,43 @@ class Module extends \yii\base\Module
     }
 
     /**
-     * Set cloudcube env.
+     * Normalize cloudcube env to generic AWS env variables.
      */
     private static function cloudcube(): void
     {
+        // Mirror Cloudcube-provided variables to AWS-style keys.
+        $env = getenv();
+        foreach ($env as $key => $value) {
+            if (!str_starts_with($key, 'CLOUDCUBE_') || $key === 'CLOUDCUBE_URL') {
+                continue;
+            }
+
+            $suffix = substr($key, strlen('CLOUDCUBE_'));
+            $value = (string) $value;
+
+            // Keep naming close to AWS SDK + common Laravel filesystem env names.
+            if ($suffix === 'HOST') {
+                static::setEnv('AWS_ENDPOINT', $value);
+                continue;
+            }
+
+            if ($suffix === 'SUBFOLDER') {
+                $prefix = trim($value, '/');
+                static::setEnv('AWS_ROOT', $prefix);
+                static::setEnv('AWS_PREFIX', $prefix);
+                continue;
+            }
+
+            if ($suffix === 'REGION') {
+                static::setEnv('AWS_REGION', $value);
+                static::setEnv('AWS_DEFAULT_REGION', $value);
+                continue;
+            }
+
+            $awsKey = 'AWS_'.$suffix;
+            static::setEnv($awsKey, $value);
+        }
+
         if (!($cloudcube = App::env('CLOUDCUBE_URL'))) {
             return;
         }
@@ -134,19 +167,18 @@ class Module extends \yii\base\Module
         // Dissect cloudcube url
         $components = parse_url($cloudcube);
 
-        // Get bucket, subfolder and host
+        // Get bucket, prefix and endpoint
         list($bucket) = explode('.', $components['host']);
-        $subfolder = isset($components['path']) ? substr($components['path'], 1) : '/';
-        $host = $components['scheme'].'://'.$components['host'];
+        $prefix = isset($components['path']) ? trim($components['path'], '/') : '';
+        $endpoint = $components['scheme'].'://'.$components['host'];
 
-        // Set bucket to env
-        static::setEnv('CLOUDCUBE_BUCKET', $bucket);
+        // Set normalized AWS env values from the Cloudcube URL.
+        static::setEnv('AWS_BUCKET', $bucket);
+        static::setEnv('AWS_ENDPOINT', $endpoint);
 
-        // Set subfolder to env
-        static::setEnv('CLOUDCUBE_SUBFOLDER', $subfolder);
-
-        // Set host to env
-        static::setEnv('CLOUDCUBE_HOST', $host);
+        // Laravel uses "root" while SDK clients/options often use "prefix".
+        static::setEnv('AWS_ROOT', $prefix);
+        static::setEnv('AWS_PREFIX', $prefix);
     }
 
     /**
