@@ -3,12 +3,17 @@
 namespace robuust\heroku;
 
 use Craft;
-use craft\awss3\Volume;
+use craft\awss3\Fs;
+use craft\fs\Local;
 use craft\helpers\App;
+use craft\mail\transportadapters\Smtp;
 use craft\queue\Queue;
-use craft\volumes\Local;
+use craft\web\Request;
+use craft\web\Response;
 use HerokuClient\Client;
+use RuntimeException;
 use yii\base\Event;
+use yii\queue\PushEvent;
 use yii\queue\Queue as BaseQueue;
 
 /**
@@ -35,28 +40,55 @@ class Module extends \yii\base\Module
         static::heroku();
         static::cloudcube();
 
-        // If this is the dev environment, use Local volumes instead of S3
+        // Require mailtrap on dev
+        $dsn = getenv('MAILTRAP_DSN');
+        if (Craft::$app->env === 'dev' && !$dsn) {
+            throw new RuntimeException('MAILTRAP_DSN environment variable is not set.');
+        }
+
+        // Configure Mailtrap mailer
+        if ($dsn) {
+            $config = App::mailerConfig();
+            $config['transport'] = [
+                'type' => Smtp::class,
+                'dsn' => $dsn,
+            ];
+
+            Craft::$app->set('mailer', Craft::createObject($config));
+        }
+
+        // If this is the dev environment, use Local filesystem instead of S3
         if (Craft::$app->env === 'dev' || Craft::$app->env === 'test') {
-            Craft::$container->set(Volume::class, function ($container, $params, $config) {
-                if (empty($config['id'])) {
-                    return new Volume($config);
+            Craft::$container->set(Fs::class, function ($container, $params, $config) {
+                if (empty($config)) {
+                    return new Fs($config);
                 }
 
                 return new Local([
-                    'id' => $config['id'],
-                    'uid' => $config['uid'],
                     'name' => $config['name'],
                     'handle' => $config['handle'],
                     'hasUrls' => $config['hasUrls'],
                     'url' => "@web/uploads/{$config['handle']}",
                     'path' => "@webroot/uploads/{$config['handle']}",
-                    'sortOrder' => $config['sortOrder'],
-                    'dateCreated' => $config['dateCreated'],
-                    'dateUpdated' => $config['dateUpdated'],
-                    'fieldLayoutId' => $config['fieldLayoutId'],
                 ]);
             });
         }
+
+        // If the request is a Turbo request and the method is POST
+        // And the response is a redirect
+        // Change status code to a 303 for Turbo
+        // See https://turbo.hotwired.dev/handbook/drive#redirecting-after-a-form-submission
+        Event::on(Response::class, Response::EVENT_BEFORE_SEND, function (Event $event) {
+            /** @var Response $response */
+            $response = $event->sender;
+            /** @var Request $request */
+            $request = Craft::$app->getRequest();
+            $headers = $request->getHeaders();
+
+            if ($headers->has('X-Turbo-Request-Id') && $request->getMethod() === 'POST' && $response->getIsRedirection()) {
+                $response->setStatusCode(303);
+            }
+        });
 
         // Toggle workers
         $appName = App::env('HEROKU_APP_NAME');
@@ -65,7 +97,7 @@ class Module extends \yii\base\Module
             $client = new Client(['apiKey' => $apiKey]);
 
             // Start worker(s) after new jobs are pushed
-            Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (Event $event) use ($client, $appName) {
+            Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (PushEvent $event) use ($client, $appName) {
                 $currentDynos = Craft::$app->getCache()->getOrSet('currentDynos', fn () => $client->get('apps/'.$appName.'/formation/worker')->quantity);
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
                 $quantity = min(ceil($jobs / 100), 10);
@@ -75,8 +107,8 @@ class Module extends \yii\base\Module
                 }
             });
 
-            // Shutdown worker(s) after all jobs are executed
-            Event::on(Queue::class, 'afterE*', function (Event $event) use ($client) {
+            // Shutdown worker(s) after all jobs are executed and released
+            Event::on(Queue::class, Queue::EVENT_AFTER_EXEC_AND_RELEASE, function (Event $event) use ($client) {
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
 
                 if ($jobs == 0) {
@@ -123,7 +155,7 @@ class Module extends \yii\base\Module
 
         // Get bucket, subfolder and host
         list($bucket) = explode('.', $components['host']);
-        $subfolder = isset($components['path']) ? substr($components['path'], 1) : '';
+        $subfolder = isset($components['path']) ? substr($components['path'], 1) : '/';
         $host = $components['scheme'].'://'.$components['host'];
 
         // Set bucket to env
