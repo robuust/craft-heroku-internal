@@ -172,6 +172,11 @@ class Module extends \yii\base\Module
         $prefix = isset($components['path']) ? trim($components['path'], '/') : '';
         $endpoint = $components['scheme'].'://'.$components['host'];
 
+        // Preserve Cloudcube env values for existing filesystem configurations.
+        static::setEnv('CLOUDCUBE_BUCKET', $bucket);
+        static::setEnv('CLOUDCUBE_SUBFOLDER', isset($components['path']) ? substr($components['path'], 1) : '/');
+        static::setEnv('CLOUDCUBE_HOST', $endpoint);
+
         // Set normalized AWS env values from the Cloudcube URL.
         static::setEnv('AWS_BUCKET', $bucket);
         static::setEnv('AWS_ENDPOINT', $endpoint);
