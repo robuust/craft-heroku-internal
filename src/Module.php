@@ -3,14 +3,22 @@
 namespace robuust\heroku;
 
 use Craft;
+use craft\contactform\events\SendEvent as ContactFormSendEvent;
+use craft\contactform\Mailer as ContactFormMailer;
 use craft\helpers\App;
+use craft\helpers\Queue as QueueHelper;
+use craft\mail\Message;
 use craft\mail\transportadapters\Smtp;
 use craft\queue\Queue;
 use craft\web\Request;
 use craft\web\Response;
 use HerokuClient\Client;
+use robuust\heroku\jobs\SendContactFormMail;
 use RuntimeException;
+use WeakMap;
 use yii\base\Event;
+use yii\mail\BaseMailer;
+use yii\mail\MailEvent;
 use yii\queue\PushEvent;
 use yii\queue\Queue as BaseQueue;
 
@@ -71,10 +79,30 @@ class Module extends \yii\base\Module
             }
         });
 
+        $runQueueAutomatically = Craft::$app->getConfig()->getGeneral()->runQueueAutomatically;
+
+        // Queue Contact Form notifications when Heroku workers own queue execution
+        if (!$runQueueAutomatically && class_exists(ContactFormMailer::class)) {
+            $contactFormMessages = new WeakMap();
+
+            Event::on(ContactFormMailer::class, ContactFormMailer::EVENT_BEFORE_SEND, function (ContactFormSendEvent $event) use ($contactFormMessages) {
+                $contactFormMessages[$event->message] = true;
+            }, null, false);
+
+            Event::on(BaseMailer::class, BaseMailer::EVENT_BEFORE_SEND, function (MailEvent $event) use ($contactFormMessages) {
+                if (!$event->message instanceof Message || !isset($contactFormMessages[$event->message])) {
+                    return;
+                }
+
+                QueueHelper::push(SendContactFormMail::fromMessage($event->message));
+                $event->isValid = false;
+            });
+        }
+
         // Toggle workers
         $appName = App::env('HEROKU_APP_NAME');
         $apiKey = App::env('HEROKU_API_KEY');
-        if ($appName && $apiKey && !Craft::$app->getConfig()->getGeneral()->runQueueAutomatically) {
+        if ($appName && $apiKey && !$runQueueAutomatically) {
             $client = new Client(['apiKey' => $apiKey]);
 
             // Start worker(s) after new jobs are pushed
