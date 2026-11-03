@@ -75,25 +75,26 @@ class Module extends \yii\base\Module
         $appName = App::env('HEROKU_APP_NAME');
         $apiKey = App::env('HEROKU_API_KEY');
         if ($appName && $apiKey && !Craft::$app->getConfig()->getGeneral()->runQueueAutomatically) {
-            $client = new Client(['apiKey' => $apiKey]);
+            $client = new Client([
+                'apiKey' => $apiKey,
+                'curlOptions' => [CURLOPT_CONNECTTIMEOUT => 2, CURLOPT_TIMEOUT => 5],
+            ]);
+            $autoscaler = new WorkerAutoscaler($client, Craft::$app->getCache(), Craft::$app->getMutex(), $appName);
 
             // Start worker(s) after new jobs are pushed
-            Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (PushEvent $event) use ($client, $appName) {
-                $currentDynos = Craft::$app->getCache()->getOrSet('currentDynos', fn () => $client->get('apps/'.$appName.'/formation/worker')->quantity);
+            Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (PushEvent $event) use ($autoscaler) {
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
-                $quantity = min(ceil($jobs / 100), 10);
+                $quantity = (int) min(ceil($jobs / 100), 10);
 
-                if ($quantity > $currentDynos) {
-                    static::setWorkers($client, $quantity);
-                }
+                $autoscaler->scale($quantity, true);
             });
 
             // Shutdown worker(s) after all jobs are executed and released
-            Event::on(Queue::class, Queue::EVENT_AFTER_EXEC_AND_RELEASE, function (Event $event) use ($client) {
+            Event::on(Queue::class, Queue::EVENT_AFTER_EXEC_AND_RELEASE, function (Event $event) use ($autoscaler) {
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
 
                 if ($jobs == 0) {
-                    static::setWorkers($client, 0);
+                    $autoscaler->scale(0);
                 }
             });
         }
@@ -193,24 +194,6 @@ class Module extends \yii\base\Module
         if ($override || !App::env($key)) {
             $_ENV[$key] = $_SERVER[$key] = $value;
             putenv($key.'='.$value);
-        }
-    }
-
-    /**
-     * Set worker quantity.
-     *
-     * @param Client $client
-     * @param int    $quantity
-     */
-    private static function setWorkers(Client $client, int $quantity): void
-    {
-        $appName = App::env('HEROKU_APP_NAME');
-
-        try {
-            $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => $quantity]);
-            Craft::$app->getCache()->set('currentDynos', $quantity);
-        } catch (\Exception $e) {
-            Craft::error($e->getMessage());
         }
     }
 }
