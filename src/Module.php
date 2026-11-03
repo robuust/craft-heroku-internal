@@ -72,8 +72,15 @@ class Module extends \yii\base\Module
         });
 
         // Toggle workers
-        $autoscaler = static::createWorkerAutoscaler();
-        if ($autoscaler !== null) {
+        $appName = App::env('HEROKU_APP_NAME');
+        $apiKey = App::env('HEROKU_API_KEY');
+        if ($appName && $apiKey && !Craft::$app->getConfig()->getGeneral()->runQueueAutomatically) {
+            $client = new Client([
+                'apiKey' => $apiKey,
+                'curlOptions' => [CURLOPT_CONNECTTIMEOUT => 2, CURLOPT_TIMEOUT => 5],
+            ]);
+            $autoscaler = new WorkerAutoscaler($client, Craft::$app->getCache(), Craft::$app->getMutex(), $appName);
+
             // Start worker(s) after new jobs are pushed
             Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (PushEvent $event) use ($autoscaler) {
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
@@ -85,23 +92,11 @@ class Module extends \yii\base\Module
             // Shutdown worker(s) after all jobs are executed and released
             Event::on(Queue::class, Queue::EVENT_AFTER_EXEC_AND_RELEASE, function (Event $event) use ($autoscaler) {
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
-                $autoscaler->scale((int) min(ceil($jobs / 100), 10), $jobs > 0);
-            });
 
-            // An existing idle worker can retry shutdown without a separate scheduler.
-            Event::on(Queue::class, Queue::EVENT_WORKER_LOOP,
-                /**
-                 * Retries scaling after the shared cooldown expires.
-                 *
-                 * @param Event $event
-                 */
-                function (Event $event) use ($autoscaler) {
-                    if ($autoscaler->isRetryDue()) {
-                        $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
-                        $autoscaler->scale((int) min(ceil($jobs / 100), 10), $jobs > 0);
-                    }
-                },
-            );
+                if ($jobs == 0) {
+                    $autoscaler->scale(0);
+                }
+            });
         }
     }
 
@@ -200,26 +195,5 @@ class Module extends \yii\base\Module
             $_ENV[$key] = $_SERVER[$key] = $value;
             putenv($key.'='.$value);
         }
-    }
-
-    /**
-     * Creates the bounded Heroku client used by queue events and manual recovery.
-     *
-     * @return WorkerAutoscaler|null
-     */
-    public static function createWorkerAutoscaler(): ?WorkerAutoscaler
-    {
-        $appName = App::env('HEROKU_APP_NAME');
-        $apiKey = App::env('HEROKU_API_KEY');
-        if (!$appName || !$apiKey || Craft::$app->getConfig()->getGeneral()->runQueueAutomatically) {
-            return null;
-        }
-
-        $client = new Client([
-            'apiKey' => $apiKey,
-            'curlOptions' => [CURLOPT_CONNECTTIMEOUT => 2, CURLOPT_TIMEOUT => 5],
-        ]);
-
-        return new WorkerAutoscaler($client, Craft::$app->getCache(), Craft::$app->getMutex(), $appName);
     }
 }

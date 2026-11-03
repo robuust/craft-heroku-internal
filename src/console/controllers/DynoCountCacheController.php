@@ -4,7 +4,7 @@ namespace robuust\heroku\console\controllers;
 
 use Craft;
 use craft\console\Controller;
-use robuust\heroku\Module;
+use craft\helpers\App;
 use yii\console\ExitCode;
 
 /**
@@ -20,26 +20,9 @@ class DynoCountCacheController extends Controller
     public function actionClear(): int
     {
         Craft::$app->getCache()->delete('currentDynos');
-        Module::createWorkerAutoscaler()?->clearQuantity();
+        Craft::$app->getCache()->delete(['heroku-workers', App::env('HEROKU_APP_NAME'), 'quantity']);
 
         $this->stdout("Cleared dyno count cache\n");
-
-        return ExitCode::OK;
-    }
-
-    /**
-     * Reconciles workers on demand when manual recovery is needed.
-     *
-     * @return int
-     */
-    public function actionReconcile(): int
-    {
-        $autoscaler = Module::createWorkerAutoscaler();
-        if ($autoscaler !== null) {
-            $queue = Craft::$app->getQueue();
-            $jobs = $queue->getTotalJobs() - $queue->getTotalFailed();
-            $autoscaler->scale((int) min(ceil($jobs / 100), 10), $jobs > 0);
-        }
 
         return ExitCode::OK;
     }

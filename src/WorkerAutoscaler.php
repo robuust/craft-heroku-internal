@@ -3,6 +3,8 @@
 namespace robuust\heroku;
 
 use Craft;
+use DateTimeImmutable;
+use DateTimeZone;
 use HerokuClient\Client;
 use yii\caching\CacheInterface;
 use yii\mutex\Mutex;
@@ -44,11 +46,11 @@ class WorkerAutoscaler
 
         try {
             $retry = $this->cache->get($this->key('retry'));
-            if ($retry !== false && $retry['after'] > $this->now()) {
+            if ($retry !== false && $retry['after'] > time()) {
                 return;
             }
 
-            $endpoint = 'apps/'.$this->appName.'/formation/worker';
+            $endpoint = 'apps/'.rawurlencode($this->appName).'/formation/worker';
             $current = $this->cache->get($this->key('quantity'));
 
             try {
@@ -76,14 +78,23 @@ class WorkerAutoscaler
                     $delay = 900;
                 }
 
-                $retryAfter = $response?->getHeaderLine('Retry-After') ?? '';
-                if ($retryAfter !== '') {
-                    $seconds = ctype_digit($retryAfter) ? (int) $retryAfter : max(0, (strtotime($retryAfter) ?: 0) - $this->now());
-                    $delay = max($delay, $seconds);
+                $now = time();
+                $delay += random_int(0, 5);
+                $retryAfter = trim($response?->getHeaderLine('Retry-After') ?? '');
+                if (ctype_digit($retryAfter)) {
+                    $delay = max($delay, min((int) $retryAfter, PHP_INT_MAX - $now));
+                } else {
+                    foreach (['D, d M Y H:i:s \G\M\T', 'l, d-M-y H:i:s \G\M\T', 'D M j H:i:s Y'] as $format) {
+                        $date = DateTimeImmutable::createFromFormat($format, $retryAfter, new DateTimeZone('UTC'));
+                        $errors = DateTimeImmutable::getLastErrors();
+                        if ($date !== false && ($errors === false || ($errors['warning_count'] === 0 && $errors['error_count'] === 0))) {
+                            $delay = max($delay, $date->getTimestamp() - $now);
+                            break;
+                        }
+                    }
                 }
 
-                $after = $this->now() + $delay + $this->jitter();
-                $this->cache->set($this->key('retry'), ['failures' => $failures, 'after' => $after], 0);
+                $this->cache->set($this->key('retry'), ['failures' => $failures, 'after' => $now + $delay], 0);
 
                 Craft::warning([
                     'message' => 'Heroku worker scaling deferred',
@@ -93,32 +104,13 @@ class WorkerAutoscaler
                     'exception' => get_class($exception),
                     'rateLimitRemaining' => $response?->getHeaderLine('RateLimit-Remaining'),
                     'requestId' => $response?->getHeaderLine('Request-Id'),
-                    'retryAfter' => $after,
+                    'retryAfter' => $retryAfter,
+                    'retryInSeconds' => $delay,
                 ], __METHOD__);
             }
         } finally {
             $this->mutex->release($lock);
         }
-    }
-
-    /**
-     * Clears the cached formation without bypassing an API cooldown.
-     */
-    public function clearQuantity(): void
-    {
-        $this->cache->delete($this->key('quantity'));
-    }
-
-    /**
-     * Determines whether an existing worker can retry a deferred scaling request.
-     *
-     * @return bool
-     */
-    public function isRetryDue(): bool
-    {
-        $retry = $this->cache->get($this->key('retry'));
-
-        return $retry !== false && $retry['after'] <= $this->now();
     }
 
     /**
@@ -131,25 +123,5 @@ class WorkerAutoscaler
     private function key(string $suffix): array
     {
         return ['heroku-workers', $this->appName, $suffix];
-    }
-
-    /**
-     * Returns the current Unix timestamp.
-     *
-     * @return int
-     */
-    protected function now(): int
-    {
-        return time();
-    }
-
-    /**
-     * Spreads recovery attempts across applications sharing an API account.
-     *
-     * @return int
-     */
-    protected function jitter(): int
-    {
-        return random_int(0, 5);
     }
 }
