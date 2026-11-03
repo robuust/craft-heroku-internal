@@ -3,6 +3,7 @@
 namespace robuust\heroku;
 
 use Craft;
+use craft\contactform\models\Submission;
 use craft\helpers\App;
 use craft\mail\transportadapters\Smtp;
 use craft\queue\Queue;
@@ -68,6 +69,12 @@ class Module extends \yii\base\Module
 
             if ($headers->has('X-Turbo-Request-Id') && $request->getMethod() === 'POST' && $response->getIsRedirection()) {
                 $response->setStatusCode(303);
+            }
+
+            // Render failed Contact Form submissions in Turbo Drive and Frames.
+            $submission = Craft::$app->getUrlManager()->getRouteParams()['submission'] ?? null;
+            if ($submission instanceof Submission && $submission->hasErrors()) {
+                $response->setStatusCode(422);
             }
         });
 
