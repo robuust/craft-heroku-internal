@@ -236,6 +236,36 @@ final class WorkerAutoscalerTest extends TestCase
         self::assertSame(['GET', 'GET'], $this->methods());
     }
 
+    public function testWorkerLoopChecksDoNotCallHerokuBeforeRetryIsDue(): void
+    {
+        self::assertFalse($this->autoscaler()->isRetryDue());
+        $this->responses = [new Response(503, [], '{}')];
+        $this->autoscaler()->scale(1, true);
+
+        for ($elapsed = 0; $elapsed < 30; ++$elapsed) {
+            self::assertFalse($this->autoscaler(1700000000 + $elapsed)->isRetryDue());
+        }
+
+        self::assertTrue($this->autoscaler(1700000030)->isRetryDue());
+        self::assertCount(1, $this->requests);
+    }
+
+    public function testIdleWorkerRetriesFailedShutdownAfterCooldown(): void
+    {
+        $this->responses = [new Response(200, [], '{"quantity":1}'), new Response(503, [], '{}')];
+        $this->autoscaler()->scale(0);
+        self::assertSame(['GET', 'PATCH'], $this->methods());
+
+        $this->responses = [new Response(200, [], '{"quantity":1}'), new Response(200, [], '{"quantity":0}')];
+        $worker = $this->autoscaler(1700000030);
+        self::assertTrue($worker->isRetryDue());
+        $worker->scale(0);
+
+        self::assertSame(['GET', 'PATCH', 'GET', 'PATCH'], $this->methods());
+        self::assertSame(['quantity' => 0], json_decode((string) $this->requests[3]->getBody(), true));
+        self::assertFalse($worker->isRetryDue());
+    }
+
     private function autoscaler(int $now = 1700000000, string $appName = 'example'): TestAutoscaler
     {
         $http = $this->createMock(HttpClient::class);

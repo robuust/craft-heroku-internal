@@ -110,6 +110,18 @@ class WorkerAutoscaler
     }
 
     /**
+     * Determines whether an existing worker can retry a deferred scaling request.
+     *
+     * @return bool
+     */
+    public function isRetryDue(): bool
+    {
+        $retry = $this->cache->get($this->key('retry'));
+
+        return $retry !== false && $retry['after'] <= $this->now();
+    }
+
+    /**
      * Returns an application-specific cache key.
      *
      * @param string $suffix

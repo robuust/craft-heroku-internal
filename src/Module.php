@@ -87,6 +87,21 @@ class Module extends \yii\base\Module
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
                 $autoscaler->scale((int) min(ceil($jobs / 100), 10), $jobs > 0);
             });
+
+            // An existing idle worker can retry shutdown without a separate scheduler.
+            Event::on(Queue::class, Queue::EVENT_WORKER_LOOP,
+                /**
+                 * Retries scaling after the shared cooldown expires.
+                 *
+                 * @param Event $event
+                 */
+                function (Event $event) use ($autoscaler) {
+                    if ($autoscaler->isRetryDue()) {
+                        $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
+                        $autoscaler->scale((int) min(ceil($jobs / 100), 10), $jobs > 0);
+                    }
+                },
+            );
         }
     }
 
@@ -188,7 +203,7 @@ class Module extends \yii\base\Module
     }
 
     /**
-     * Creates the bounded Heroku client used by queue events and reconciliation.
+     * Creates the bounded Heroku client used by queue events and manual recovery.
      *
      * @return WorkerAutoscaler|null
      */

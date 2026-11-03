@@ -21,22 +21,28 @@ the cooldown, using either seconds or an HTTP date. Transport errors are logged
 separately from HTTP errors, including any available `RateLimit-Remaining` and
 `Request-Id` response headers.
 
-Later queue events retry after the cooldown. To recover when no further queue
-events occur, configure an external scheduler to run this command once a minute,
-replacing `<module-id>` with the registered Craft module ID:
+Later queue events retry after the cooldown. An already-running worker also
+checks for a due retry in its normal queue loop, so a failed shutdown can recover
+while the queue is idle. This does not launch a scheduler or a one-off recovery
+dyno. Loop checks do not call Heroku unless a failed attempt is due.
+
+If starting workers fails while all workers are off, jobs wait for the next
+queue push after the cooldown. When no new jobs are being pushed, recover
+manually with the following command, replacing `<module-id>` with the registered
+Craft module ID. Run it only when needed; do not schedule it:
 
 ```sh
 php craft <module-id>/dyno-count-cache/reconcile
 ```
 
-The command computes its target from the current queue and honours the cooldown.
-A failed PATCH invalidates the cached quantity because Heroku may have applied
-the change before the client timed out. The next attempt reads the formation
-before deciding whether another PATCH is needed.
+The manual command computes its target from the current queue and honours the
+cooldown. A failed PATCH invalidates the cached quantity because Heroku may have
+applied the change before the client timed out. The next attempt reads the
+formation before deciding whether another PATCH is needed.
 
 The `dyno-count-cache/clear` action clears the cached formation without bypassing
-an active cooldown. Deploying this module does not configure a shared cache,
-mutex or scheduler.
+an active cooldown. Deploying this module does not configure a shared cache or
+mutex. No scheduled recovery dynos are required.
 
 These changes apply to the Craft module. Clubee's Laravel autoscaler is a separate
 package and is not changed by this release.

@@ -28,8 +28,7 @@ class DynoCountCacheController extends Controller
     }
 
     /**
-     * Reconciles workers periodically so recovery does not depend on another queue event.
-     * Schedule this action once per minute when Heroku workers execute the queue.
+     * Reconciles workers on demand when manual recovery is needed.
      *
      * @return int
      */
