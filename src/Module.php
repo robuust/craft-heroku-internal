@@ -4,6 +4,7 @@ namespace robuust\heroku;
 
 use Craft;
 use craft\awss3\Fs;
+use craft\contactform\controllers\SendController;
 use craft\fs\Local;
 use craft\helpers\App;
 use craft\mail\transportadapters\Smtp;
@@ -12,6 +13,7 @@ use craft\web\Request;
 use craft\web\Response;
 use HerokuClient\Client;
 use RuntimeException;
+use yii\base\ActionEvent;
 use yii\base\Event;
 use yii\queue\PushEvent;
 use yii\queue\Queue as BaseQueue;
@@ -89,6 +91,20 @@ class Module extends \yii\base\Module
                 $response->setStatusCode(303);
             }
         });
+
+        // If the request is a Turbo request and a Contact Form submission fails
+        // And the submission template is rendered again (non-JSON)
+        // Change status code to a 422 for Turbo
+        // See https://turbo.hotwired.dev/handbook/drive#redirecting-after-a-form-submission
+        if (class_exists(SendController::class)) {
+            Event::on(SendController::class, SendController::EVENT_AFTER_ACTION, function (ActionEvent $event) {
+                $headers = Craft::$app->getRequest()->getHeaders();
+
+                if ($headers->has('X-Turbo-Request-Id') && $event->action->id === 'index' && $event->result === null) {
+                    Craft::$app->getResponse()->setStatusCode(422);
+                }
+            });
+        }
 
         // Toggle workers
         $appName = App::env('HEROKU_APP_NAME');
