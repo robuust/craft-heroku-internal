@@ -6,6 +6,7 @@ use Craft;
 use craft\console\Controller;
 use craft\helpers\App;
 use HerokuClient\Client;
+use robuust\heroku\WorkerAutoscaler;
 use yii\console\ExitCode;
 
 /**
@@ -21,6 +22,7 @@ class DynoCountCacheController extends Controller
     public function actionClear(): int
     {
         Craft::$app->getCache()->delete('currentDynos');
+        Craft::$app->getCache()->delete(['heroku-workers', App::env('HEROKU_APP_NAME'), 'quantity']);
 
         $this->stdout("Cleared dyno count cache\n");
 
@@ -49,23 +51,21 @@ class DynoCountCacheController extends Controller
             return ExitCode::OK;
         }
 
-        $client = new Client(['apiKey' => $apiKey]);
-        $currentDynos = $client->get('apps/'.$appName.'/formation/worker')->quantity;
-        $quantity = min(ceil(Craft::$app->queue->getTotalWaiting() / 100), 10);
+        $client = new Client([
+            'apiKey' => $apiKey,
+            'curlOptions' => [CURLOPT_CONNECTTIMEOUT => 2, CURLOPT_TIMEOUT => 5],
+        ]);
+        $autoscaler = new WorkerAutoscaler($client, Craft::$app->getCache(), Craft::$app->getMutex(), $appName);
+        $waiting = Craft::$app->queue->getTotalWaiting();
+        $hasJobs = $waiting + Craft::$app->queue->getTotalReserved() > 0;
+        $quantity = (int) min(ceil($waiting / 100), 10);
+        if (!$autoscaler->scale($quantity, $hasJobs)) {
+            $this->stderr("Worker reconciliation deferred; check the application logs for API failures.\n");
 
-        if ($quantity <= $currentDynos && Craft::$app->queue->getTotalWaiting() + Craft::$app->queue->getTotalReserved() == 0) {
-            $quantity = 0;
-        } elseif ($quantity <= $currentDynos) {
-            $quantity = $currentDynos;
+            return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        if ($quantity != $currentDynos) {
-            $client->patch('apps/'.$appName.'/formation/worker', ['quantity' => $quantity]);
-        }
-
-        Craft::$app->getCache()->set('currentDynos', $quantity);
-
-        $this->stdout("Worker dynos reconciled to {$quantity}.\n");
+        $this->stdout("Worker dynos reconciled.\n");
 
         return ExitCode::OK;
     }
