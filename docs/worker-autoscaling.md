@@ -1,13 +1,19 @@
 # Heroku worker autoscaling
 
-Autoscaling is enabled when `HEROKU_APP_NAME` and `HEROKU_API_KEY` are configured
-and Craft's `runQueueAutomatically` setting is disabled. A queue push can only
+Autoscaling requires `HEROKU_APP_NAME`, worker client credentials, and Craft's
+`runQueueAutomatically` setting disabled. Configure `HEROKU_CONTROL_URL` and
+`HEROKU_CONTROL_TOKEN` together to use Heroku Control. The URL must use HTTPS
+without user information, query, or fragment; the token must be a gateway
+credential. Incomplete gateway configuration fails instead of using the legacy
+credential. With neither gateway variable set, `HEROKU_API_KEY` retains the
+existing direct Heroku behavior. A queue push can only
 increase the worker count, using one worker per 100 jobs, up to 10 workers.
 After execution and release, workers are stopped only when the queue is empty.
 
-Heroku requests have a 2-second connection timeout and a 5-second total timeout.
-An attempt may need a formation GET followed by a PATCH, taking up to 10 seconds
-on HTTP requests. Requests are never retried inline.
+Direct Heroku requests have a 2-second connection timeout and a 5-second total
+timeout. Gateway requests allow 35 seconds total and do not follow redirects.
+An attempt may need a formation GET followed by a PATCH; account for both
+requests in the caller's execution budget. Requests are never retried inline.
 
 Use a shared persistent cache and mutex backend across application dynos.
 The default filesystem cache does not share cooldowns between dynos. Formation
@@ -35,3 +41,7 @@ The existing `dyno-count-cache/clear` action clears the cached formation without
 bypassing an active cooldown or making a Heroku request. Deploying this module
 does not configure the shared cache or mutex. Clubee's Laravel autoscaler is a
 separate package and is unaffected by this release.
+
+When switching worker client credentials or route, clear the formation cache and
+any stale backoff before the first controlled request. Queue events use the
+client factory for both direct and gateway requests.

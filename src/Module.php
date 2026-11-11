@@ -9,7 +9,6 @@ use craft\mail\transportadapters\Smtp;
 use craft\queue\Queue;
 use craft\web\Request;
 use craft\web\Response;
-use HerokuClient\Client;
 use RuntimeException;
 use yii\base\Event;
 use yii\queue\PushEvent;
@@ -80,12 +79,11 @@ class Module extends \yii\base\Module
 
         // Toggle workers
         $appName = App::env('HEROKU_APP_NAME');
-        $apiKey = App::env('HEROKU_API_KEY');
-        if ($appName && $apiKey && !Craft::$app->getConfig()->getGeneral()->runQueueAutomatically) {
-            $client = new Client([
-                'apiKey' => $apiKey,
-                'curlOptions' => [CURLOPT_CONNECTTIMEOUT => 2, CURLOPT_TIMEOUT => 5],
-            ]);
+        if ($appName && !Craft::$app->getConfig()->getGeneral()->runQueueAutomatically) {
+            $client = ClientFactory::create();
+            if ($client === null) {
+                return;
+            }
             $autoscaler = new WorkerAutoscaler($client, Craft::$app->getCache(), Craft::$app->getMutex(), $appName);
 
             // Start worker(s) after new jobs are pushed
