@@ -32,7 +32,7 @@ class WorkerAutoscaler
     }
 
     /**
-     * Reconciles a fresh worker target without sleeping or retrying inline.
+     * Reconciles a fresh worker target within the dyno tier's scaling limit.
      *
      * @param int  $quantity
      * @param bool $onlyIncrease
@@ -52,11 +52,19 @@ class WorkerAutoscaler
 
             $endpoint = 'apps/'.rawurlencode($this->appName).'/formation/worker';
             $current = $this->cache->get($this->key('quantity'));
+            $size = $this->cache->get($this->key('size'));
 
             try {
-                if ($current === false) {
-                    $current = (int) $this->client->get($endpoint)->quantity;
+                if ($current === false || $size === false) {
+                    $formation = $this->client->get($endpoint);
+                    $current = (int) $formation->quantity;
+                    $size = $formation->size;
                     $this->cache->set($this->key('quantity'), $current, 3600);
+                    $this->cache->set($this->key('size'), $size, 3600);
+                }
+
+                if (in_array(strtolower($size), ['basic', 'eco'], true)) {
+                    $quantity = min($quantity, 1);
                 }
 
                 if ($current !== $quantity && (!$onlyIncrease || $quantity > $current)) {
@@ -68,6 +76,7 @@ class WorkerAutoscaler
             } catch (\Exception $exception) {
                 // A timed-out PATCH may have succeeded: read the formation on the next attempt.
                 $this->cache->delete($this->key('quantity'));
+                $this->cache->delete($this->key('size'));
                 $response = $this->client->getLastHttpResponse();
                 $status = $response?->getStatusCode();
                 $failures = min(($retry === false ? 0 : $retry['failures']) + 1, 6);
