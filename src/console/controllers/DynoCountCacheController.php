@@ -23,6 +23,7 @@ class DynoCountCacheController extends Controller
     {
         Craft::$app->getCache()->delete('currentDynos');
         Craft::$app->getCache()->delete(['heroku-workers', App::env('HEROKU_APP_NAME'), 'quantity']);
+        Craft::$app->getCache()->delete(['heroku-workers', App::env('HEROKU_APP_NAME'), 'size']);
 
         $this->stdout("Cleared dyno count cache\n");
 

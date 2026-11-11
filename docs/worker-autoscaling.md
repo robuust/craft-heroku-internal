@@ -8,6 +8,9 @@ credential. Incomplete gateway configuration fails instead of using the legacy
 credential. With neither gateway variable set, `HEROKU_API_KEY` retains the
 existing direct Heroku behavior. A queue push can only
 increase the worker count, using one worker per 100 waiting jobs, up to 10 workers.
+Basic and Eco workers are limited to one worker per process type, based on the
+trusted formation size returned by Heroku. The same limit applies to queue events
+and manual reconciliation. Other dyno tiers retain the existing scaling policy.
 After execution and release, workers are stopped only when no waiting or reserved
 jobs remain.
 
@@ -18,9 +21,12 @@ requests in the caller's execution budget. Requests are never retried inline.
 
 Use a shared persistent cache and mutex backend across application dynos.
 The default filesystem cache does not share cooldowns between dynos. Formation
-quantities are cached for one hour, with state scoped by Heroku app name.
+quantities and sizes are cached for one hour, with state scoped by Heroku app name.
+A quantity cached by an earlier adapter version is refreshed when its size is
+missing. Heroku Control must return the trusted formation `size` before deploying
+this adapter version; direct Heroku formation responses already provide it.
 A non-blocking mutex prevents simultaneous scaling calls. A failed attempt
-invalidates the cached quantity because a timed-out PATCH may already have
+invalidates the cached quantity and size because a timed-out PATCH may already have
 changed the formation.
 
 Failures defer subsequent attempts for 30, 60, 120, 240, 480 and then 900 seconds,
@@ -38,7 +44,7 @@ request holds the mutex, can remain waiting until a later applicable event.
 This also applies to failed startup with no active workers and failed shutdown
 with no further jobs. Operators can intervene when necessary.
 
-The existing `dyno-count-cache/clear` action clears the cached formation without
+The existing `dyno-count-cache/clear` action clears the cached quantity and size without
 bypassing an active cooldown or making a Heroku request. Deploying this module
 does not configure the shared cache or mutex. Clubee's Laravel autoscaler is a
 separate package and is unaffected by this release.
@@ -52,3 +58,10 @@ successful reconciliation. API failures are recorded in the application logs.
 When switching worker client credentials or route, clear the formation cache and
 any stale backoff before the first controlled request. Both queue events and the
 manual reconcile action use the same client factory.
+
+When changing a worker's dyno tier, clear its formation cache so the next queue
+event reads the new size before choosing a quantity. See [Heroku's scaling
+limits](https://devcenter.heroku.com/articles/dyno-scaling-and-process-limits).
+
+Run the standalone autoscaler regressions with `php tests/worker-autoscaler.php`.
+They use in-memory dependencies and make no Heroku requests.
