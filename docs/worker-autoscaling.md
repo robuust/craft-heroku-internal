@@ -62,6 +62,3 @@ manual reconcile action use the same client factory.
 When changing a worker's dyno tier, clear its formation cache so the next queue
 event reads the new size before choosing a quantity. See [Heroku's scaling
 limits](https://devcenter.heroku.com/articles/dyno-scaling-and-process-limits).
-
-Run the standalone autoscaler regressions with `php tests/worker-autoscaler.php`.
-They use in-memory dependencies and make no Heroku requests.
