@@ -5,7 +5,7 @@ namespace robuust\heroku\console\controllers;
 use Craft;
 use craft\console\Controller;
 use craft\helpers\App;
-use HerokuClient\Client;
+use robuust\heroku\ClientFactory;
 use robuust\heroku\WorkerAutoscaler;
 use yii\console\ExitCode;
 
@@ -37,10 +37,10 @@ class DynoCountCacheController extends Controller
     public function actionReconcile(): int
     {
         $appName = App::env('HEROKU_APP_NAME');
-        $apiKey = App::env('HEROKU_API_KEY');
+        $client = ClientFactory::create();
 
-        if (!$appName || !$apiKey) {
-            $this->stderr("HEROKU_APP_NAME and HEROKU_API_KEY must be configured.\n");
+        if (!$appName || $client === null) {
+            $this->stderr("HEROKU_APP_NAME and worker client credentials must be configured.\n");
 
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -51,10 +51,6 @@ class DynoCountCacheController extends Controller
             return ExitCode::OK;
         }
 
-        $client = new Client([
-            'apiKey' => $apiKey,
-            'curlOptions' => [CURLOPT_CONNECTTIMEOUT => 2, CURLOPT_TIMEOUT => 5],
-        ]);
         $autoscaler = new WorkerAutoscaler($client, Craft::$app->getCache(), Craft::$app->getMutex(), $appName);
         $waiting = Craft::$app->queue->getTotalWaiting();
         $hasJobs = $waiting + Craft::$app->queue->getTotalReserved() > 0;
