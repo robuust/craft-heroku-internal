@@ -24,6 +24,9 @@ alone does not guarantee that the listener is alive, and delay expiry does not
 emit another queue push event or restart a stopped listener. This module manages
 formation quantity, not listener recovery.
 
+This Redis behavior is verified against Yii Queue 2.3.7, recorded in
+`composer.lock`: see its [worker loop and delayed-job promotion](https://github.com/yiisoft/yii2-queue/blob/dbc9d4a7b2a6995cd19c3e334227482ef55e559b/src/drivers/redis/Queue.php#L58-L177).
+
 All delayed jobs count toward the worker target, regardless of when they
 become runnable. Long delays can therefore retain billed worker capacity for the entire
 delay, subject to the tier limits above. Scaling to zero before they become due
