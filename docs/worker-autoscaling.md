@@ -7,11 +7,21 @@ without user information, query, or fragment; the token must be a gateway
 credential. Incomplete gateway configuration fails instead of using the legacy
 credential. With neither gateway variable set, `HEROKU_API_KEY` retains the
 existing direct Heroku behavior. A queue push can only
-increase the worker count, using one worker per 100 jobs, up to 10 workers.
+increase the worker count, using one worker per 100 non-failed jobs, up to 10
+workers. The existing 3.x calculation uses `getTotalJobs() - getTotalFailed()`,
+which includes waiting, delayed and reserved jobs.
 Basic and Eco workers are limited to one worker per process type, based on the
 trusted formation size returned by Heroku. Other dyno tiers retain the existing
 scaling policy.
-After execution and release, workers are stopped only when the queue is empty.
+After execution and release, workers are stopped only when no non-failed jobs
+remain. Failed jobs alone do not keep workers active.
+
+Delayed jobs already count toward scaling in 3.x. Keeping a worker active allows
+Redis to promote these jobs when their delay expires; delay expiry does not emit
+another queue push event.
+
+The 3.x line has no manual `dyno-count-cache/reconcile` action; scaling is driven
+by the queue events described above.
 
 Direct Heroku requests have a 2-second connection timeout and a 5-second total
 timeout. Gateway requests allow 35 seconds total and do not follow redirects.
