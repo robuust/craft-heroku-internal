@@ -7,12 +7,18 @@ without user information, query, or fragment; the token must be a gateway
 credential. Incomplete gateway configuration fails instead of using the legacy
 credential. With neither gateway variable set, `HEROKU_API_KEY` retains the
 existing direct Heroku behavior. A queue push can only
-increase the worker count, using one worker per 100 waiting jobs, up to 10 workers.
+increase the worker count, using one worker per 100 waiting or delayed jobs, up to
+10 workers.
 Basic and Eco workers are limited to one worker per process type, based on the
 trusted formation size returned by Heroku. The same limit applies to queue events
 and manual reconciliation. Other dyno tiers retain the existing scaling policy.
-After execution and release, workers are stopped only when no waiting or reserved
-jobs remain.
+After execution and release, workers are stopped only when no waiting, delayed or
+reserved jobs remain. Failed jobs do not count toward scaling.
+
+Delayed jobs are counted before waiting jobs so a job becoming runnable between
+the two reads cannot disappear from both counts. Keeping a worker active also
+allows Redis to promote delayed jobs when their delay expires; delay expiry does
+not emit another queue push event.
 
 Direct Heroku requests have a 2-second connection timeout and a 5-second total
 timeout. Gateway requests allow 35 seconds total and do not follow redirects.
@@ -51,9 +57,10 @@ separate package and is unaffected by this release.
 
 The 2.x line retains its existing manual `dyno-count-cache/reconcile` action. It
 uses the same HTTP limits, mutex and cooldown as queue events, and preserves
-workers while jobs are reserved. It does not register a scheduled task. A cooldown,
-busy mutex or API failure returns a nonzero exit code instead of reporting a
-successful reconciliation. API failures are recorded in the application logs.
+workers while jobs are reserved and starts workers for delayed jobs as well. It
+does not register a scheduled task. A cooldown, busy mutex or API failure returns
+a nonzero exit code instead of reporting a successful reconciliation. API failures
+are recorded in the application logs.
 
 When switching worker client credentials or route, clear the formation cache and
 any stale backoff before the first controlled request. Both queue events and the
