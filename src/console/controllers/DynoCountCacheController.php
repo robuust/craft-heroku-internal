@@ -31,7 +31,7 @@ class DynoCountCacheController extends Controller
     }
 
     /**
-     * Reconcile worker dynos with runnable queue jobs.
+     * Reconcile worker dynos with queued jobs, including delayed jobs.
      *
      * @return int
      */
@@ -53,7 +53,7 @@ class DynoCountCacheController extends Controller
         }
 
         $autoscaler = new WorkerAutoscaler($client, Craft::$app->getCache(), Craft::$app->getMutex(), $appName);
-        $waiting = Craft::$app->queue->getTotalWaiting();
+        $waiting = Craft::$app->queue->getTotalDelayed() + Craft::$app->queue->getTotalWaiting();
         $hasJobs = $waiting + Craft::$app->queue->getTotalReserved() > 0;
         $quantity = (int) min(ceil($waiting / 100), 10);
         if (!$autoscaler->scale($quantity, $hasJobs)) {

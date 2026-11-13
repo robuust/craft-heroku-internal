@@ -107,7 +107,7 @@ class Module extends \yii\base\Module
 
             // Start worker(s) after new jobs are pushed
             Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (PushEvent $event) use ($autoscaler) {
-                $jobs = Craft::$app->queue->getTotalWaiting();
+                $jobs = Craft::$app->queue->getTotalDelayed() + Craft::$app->queue->getTotalWaiting();
                 $quantity = (int) min(ceil($jobs / 100), 10);
 
                 $autoscaler->scale($quantity, true);
@@ -115,7 +115,7 @@ class Module extends \yii\base\Module
 
             // Shutdown worker(s) after all jobs are executed and released
             Event::on(Queue::class, Queue::EVENT_AFTER_EXEC_AND_RELEASE, function (Event $event) use ($autoscaler) {
-                $jobs = Craft::$app->queue->getTotalWaiting() + Craft::$app->queue->getTotalReserved();
+                $jobs = Craft::$app->queue->getTotalDelayed() + Craft::$app->queue->getTotalWaiting() + Craft::$app->queue->getTotalReserved();
 
                 if ($jobs == 0) {
                     $autoscaler->scale(0);
