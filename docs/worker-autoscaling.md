@@ -16,9 +16,19 @@ After execution and release, workers are stopped only when no waiting, delayed o
 reserved jobs remain. Failed jobs do not count toward scaling.
 
 Delayed jobs are counted before waiting jobs so a job becoming runnable between
-the two reads cannot disappear from both counts. Keeping a worker active also
-allows Redis to promote delayed jobs when their delay expires; delay expiry does
-not emit another queue push event.
+the two reads cannot disappear from both counts.
+
+For Redis queues, the queue driver's worker loop promotes delayed jobs during
+`reserve()` after their delay expires; Redis does not promote them independently.
+Worker dynos must keep a queue listener running while delayed jobs remain. A
+positive formation quantity alone does not guarantee that the listener is alive,
+and delay expiry does not emit another queue push event or restart a stopped
+listener. This module manages formation quantity, not listener recovery.
+
+All delayed jobs count toward the worker target, regardless of when they
+become runnable. Long delays can therefore retain billed worker capacity for the entire
+delay, subject to the tier limits above. Scaling to zero before they become due
+would require a separate wake-up mechanism, which this module does not provide.
 
 Direct Heroku requests have a 2-second connection timeout and a 5-second total
 timeout. Gateway requests allow 35 seconds total and do not follow redirects.
