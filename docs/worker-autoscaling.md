@@ -16,9 +16,18 @@ scaling policy.
 After execution and release, workers are stopped only when no non-failed jobs
 remain. Failed jobs alone do not keep workers active.
 
-Delayed jobs already count toward scaling in 3.x. Keeping a worker active allows
-Redis to promote these jobs when their delay expires; delay expiry does not emit
-another queue push event.
+Delayed jobs already count toward scaling in 3.x. For Redis queues, the queue
+driver's worker loop promotes delayed jobs during `reserve()` after their delay
+expires; Redis does not promote them independently. Worker dynos must keep a
+queue listener running while delayed jobs remain. A positive formation quantity
+alone does not guarantee that the listener is alive, and delay expiry does not
+emit another queue push event or restart a stopped listener. This module manages
+formation quantity, not listener recovery.
+
+All delayed jobs count toward the worker target, regardless of when they
+become runnable. Long delays can therefore retain billed worker capacity for the entire
+delay, subject to the tier limits above. Scaling to zero before they become due
+would require a separate wake-up mechanism, which this module does not provide.
 
 The 3.x line has no manual `dyno-count-cache/reconcile` action; scaling is driven
 by the queue events described above.
