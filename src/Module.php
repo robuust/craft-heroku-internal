@@ -12,7 +12,9 @@ use craft\queue\Queue;
 use craft\web\Request;
 use craft\web\Response;
 use RuntimeException;
+use yii\base\Application;
 use yii\base\Event;
+use yii\queue\cli\Queue as CliQueue;
 use yii\queue\PushEvent;
 use yii\queue\Queue as BaseQueue;
 
@@ -104,17 +106,43 @@ class Module extends \yii\base\Module
                 return;
             }
             $autoscaler = new WorkerAutoscaler($client, Craft::$app->getCache(), Craft::$app->getMutex(), $appName);
-
-            // Start worker(s) after new jobs are pushed
-            Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (PushEvent $event) use ($autoscaler) {
+            $pendingScaleUp = false;
+            $scaleUp = /**
+             * Reconciles pending pushes after Craft has released its queue mutex.
+             */ function () use ($autoscaler, &$pendingScaleUp) {
+                if (!$pendingScaleUp) {
+                    return;
+                }
+                $pendingScaleUp = false;
                 $jobs = Craft::$app->queue->getTotalDelayed() + Craft::$app->queue->getTotalWaiting();
                 $quantity = (int) min(ceil($jobs / 100), 10);
 
                 $autoscaler->scale($quantity, true);
+            };
+
+            Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, /**
+             * Defers proxy pushes, which can occur inside Craft's retry mutex.
+             *
+             * @param PushEvent $event
+             */ function (PushEvent $event) use ($scaleUp, &$pendingScaleUp) {
+                $pendingScaleUp = true;
+                if ($event->sender === Craft::$app->queue) {
+                    $scaleUp();
+                }
             });
 
+            // Retried proxy jobs have no outer Craft afterPush event. Flush them
+            // after the request or before the next iteration of a long-lived worker.
+            Event::on(Application::class, Application::EVENT_AFTER_REQUEST, $scaleUp);
+            Event::on(CliQueue::class, CliQueue::EVENT_WORKER_LOOP, $scaleUp);
+
             // Shutdown worker(s) after all jobs are executed and released
-            Event::on(Queue::class, Queue::EVENT_AFTER_EXEC_AND_RELEASE, function (Event $event) use ($autoscaler) {
+            Event::on(Queue::class, Queue::EVENT_AFTER_EXEC_AND_RELEASE, /**
+             * Reconciles pending startup and stops workers only when all jobs finish.
+             *
+             * @param Event $event
+             */ function (Event $event) use ($autoscaler, $scaleUp) {
+                $scaleUp();
                 $jobs = Craft::$app->queue->getTotalDelayed() + Craft::$app->queue->getTotalWaiting() + Craft::$app->queue->getTotalReserved();
 
                 if ($jobs == 0) {
