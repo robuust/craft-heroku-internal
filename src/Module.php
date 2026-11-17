@@ -10,7 +10,9 @@ use craft\queue\Queue;
 use craft\web\Request;
 use craft\web\Response;
 use RuntimeException;
+use yii\base\Application;
 use yii\base\Event;
+use yii\queue\cli\Queue as CliQueue;
 use yii\queue\PushEvent;
 use yii\queue\Queue as BaseQueue;
 
@@ -23,6 +25,16 @@ class Module extends \yii\base\Module
      * {@inheritdoc}
      */
     public $controllerNamespace = 'robuust\heroku\console\controllers';
+
+    /**
+     * Whether pushed jobs still need worker reconciliation.
+     */
+    private bool $pendingScaleUp = false;
+
+    /**
+     * Autoscaler initialized before queue event handlers are registered.
+     */
+    private WorkerAutoscaler $autoscaler;
 
     /**
      * Initializes the module.
@@ -84,25 +96,46 @@ class Module extends \yii\base\Module
             if ($client === null) {
                 return;
             }
-            $autoscaler = new WorkerAutoscaler($client, Craft::$app->getCache(), Craft::$app->getMutex(), $appName);
+            $this->autoscaler = new WorkerAutoscaler($client, Craft::$app->getCache(), Craft::$app->getMutex(), $appName);
 
-            // Start worker(s) after new jobs are pushed
-            Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (PushEvent $event) use ($autoscaler) {
-                $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
-                $quantity = (int) min(ceil($jobs / 100), 10);
-
-                $autoscaler->scale($quantity, true);
+            // Defer proxy pushes, which can occur inside Craft's retry mutex.
+            Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (PushEvent $event) {
+                $this->pendingScaleUp = true;
+                if ($event->sender === Craft::$app->queue) {
+                    $this->flushPendingScaleUp();
+                }
             });
 
-            // Shutdown worker(s) after all jobs are executed and released
-            Event::on(Queue::class, Queue::EVENT_AFTER_EXEC_AND_RELEASE, function (Event $event) use ($autoscaler) {
+            // Retried proxy jobs have no outer Craft afterPush event. Flush them
+            // after the request or before the next iteration of a long-lived worker.
+            Event::on(Application::class, Application::EVENT_AFTER_REQUEST, $this->flushPendingScaleUp(...));
+            Event::on(CliQueue::class, CliQueue::EVENT_WORKER_LOOP, $this->flushPendingScaleUp(...));
+
+            // Reconcile pending startup and stop workers only when all jobs finish.
+            Event::on(Queue::class, Queue::EVENT_AFTER_EXEC_AND_RELEASE, function (Event $event) {
+                $this->flushPendingScaleUp();
                 $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
 
                 if ($jobs == 0) {
-                    $autoscaler->scale(0);
+                    $this->autoscaler->scale(0);
                 }
             });
         }
+    }
+
+    /**
+     * Reconciles pending pushes after Craft has released its queue mutex.
+     */
+    private function flushPendingScaleUp(): void
+    {
+        if (!$this->pendingScaleUp) {
+            return;
+        }
+        $this->pendingScaleUp = false;
+        $jobs = Craft::$app->queue->getTotalJobs() - Craft::$app->queue->getTotalFailed();
+        $quantity = (int) min(ceil($jobs / 100), 10);
+
+        $this->autoscaler->scale($quantity, true);
     }
 
     /**

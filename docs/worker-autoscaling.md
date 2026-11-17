@@ -10,6 +10,20 @@ existing direct Heroku behavior. A queue push can only
 increase the worker count, using one worker per 100 non-failed jobs, up to 10
 workers. The existing 3.x calculation uses `getTotalJobs() - getTotalFailed()`,
 which includes waiting, delayed and reserved jobs.
+
+Normal Craft pushes reconcile after the outer Craft `afterPush` event. Proxy
+pushes only mark startup as pending: Craft's `retry()` and `retryAll()` can emit
+them while holding the global queue mutex. Pending pushes are coalesced and
+reconciled from fresh queue counts at the end of the request, the next Yii CLI
+worker iteration, or Craft's `afterExecAndRelease` event. Autoscaling HTTP calls
+therefore do not extend the retry operation's queue lock. The queue lock timeout
+and HTTP timeouts are unchanged.
+
+Pending startup is held in process memory. A custom long-running command outside
+the Yii queue worker lifecycle waits until request completion; termination before
+that boundary can discard a pending reconciliation. The existing event-driven
+failure recovery limits below still apply.
+
 Basic and Eco workers are limited to one worker per process type, based on the
 trusted formation size returned by Heroku. Other dyno tiers retain the existing
 scaling policy.
