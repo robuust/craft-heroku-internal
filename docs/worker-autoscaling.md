@@ -10,7 +10,7 @@ existing direct Heroku behavior. A queue push can only
 increase the worker count, using one worker per 100 waiting or delayed jobs, up to
 10 workers.
 
-Normal Craft pushes reconcile after the outer Craft `afterPush` event. Proxy
+Console Craft pushes reconcile after the outer Craft `afterPush` event. Proxy
 pushes only mark startup as pending: Craft's `retry()` and `retryAll()` can emit
 them while holding the global queue mutex. Pending pushes are coalesced and
 reconciled from fresh queue counts at the end of the request, the next Yii CLI
