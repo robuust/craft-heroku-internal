@@ -79,11 +79,6 @@ bypassing an active cooldown or making a Heroku request. Deploying this module
 does not configure the shared cache or mutex. Clubee's Laravel autoscaler is a
 separate package and is unaffected by this release.
 
-The isolated [queue-lock reproduction](../tests/queue-lock/README.md) compares the
-2.10.3 module with this implementation using two PostgreSQL connections and a
-mocked slow formation client. It never loads application credentials or executes
-queued jobs.
-
 The 2.x line retains its existing manual `dyno-count-cache/reconcile` action. It
 uses the same HTTP limits, mutex and cooldown as queue events, and preserves
 workers while jobs are reserved and starts workers for delayed jobs as well. It
