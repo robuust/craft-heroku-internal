@@ -29,6 +29,16 @@ class Module extends \yii\base\Module
     public $controllerNamespace = 'robuust\heroku\console\controllers';
 
     /**
+     * Whether pushed jobs still need worker reconciliation.
+     */
+    private bool $pendingScaleUp = false;
+
+    /**
+     * Autoscaler initialized before queue event handlers are registered.
+     */
+    private WorkerAutoscaler $autoscaler;
+
+    /**
      * Initializes the module.
      */
     public function init()
@@ -105,51 +115,46 @@ class Module extends \yii\base\Module
             if ($client === null) {
                 return;
             }
-            $autoscaler = new WorkerAutoscaler($client, Craft::$app->getCache(), Craft::$app->getMutex(), $appName);
-            $pendingScaleUp = false;
-            $scaleUp = /**
-             * Reconciles pending pushes after Craft has released its queue mutex.
-             */ function () use ($autoscaler, &$pendingScaleUp) {
-                if (!$pendingScaleUp) {
-                    return;
-                }
-                $pendingScaleUp = false;
-                $jobs = Craft::$app->queue->getTotalDelayed() + Craft::$app->queue->getTotalWaiting();
-                $quantity = (int) min(ceil($jobs / 100), 10);
+            $this->autoscaler = new WorkerAutoscaler($client, Craft::$app->getCache(), Craft::$app->getMutex(), $appName);
 
-                $autoscaler->scale($quantity, true);
-            };
-
-            Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, /**
-             * Defers proxy pushes, which can occur inside Craft's retry mutex.
-             *
-             * @param PushEvent $event
-             */ function (PushEvent $event) use ($scaleUp, &$pendingScaleUp) {
-                $pendingScaleUp = true;
+            // Defer proxy pushes, which can occur inside Craft's retry mutex.
+            Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (PushEvent $event) {
+                $this->pendingScaleUp = true;
                 if ($event->sender === Craft::$app->queue) {
-                    $scaleUp();
+                    $this->flushPendingScaleUp();
                 }
             });
 
             // Retried proxy jobs have no outer Craft afterPush event. Flush them
             // after the request or before the next iteration of a long-lived worker.
-            Event::on(Application::class, Application::EVENT_AFTER_REQUEST, $scaleUp);
-            Event::on(CliQueue::class, CliQueue::EVENT_WORKER_LOOP, $scaleUp);
+            Event::on(Application::class, Application::EVENT_AFTER_REQUEST, $this->flushPendingScaleUp(...));
+            Event::on(CliQueue::class, CliQueue::EVENT_WORKER_LOOP, $this->flushPendingScaleUp(...));
 
-            // Shutdown worker(s) after all jobs are executed and released
-            Event::on(Queue::class, Queue::EVENT_AFTER_EXEC_AND_RELEASE, /**
-             * Reconciles pending startup and stops workers only when all jobs finish.
-             *
-             * @param Event $event
-             */ function (Event $event) use ($autoscaler, $scaleUp) {
-                $scaleUp();
+            // Reconcile pending startup and stop workers only when all jobs finish.
+            Event::on(Queue::class, Queue::EVENT_AFTER_EXEC_AND_RELEASE, function (Event $event) {
+                $this->flushPendingScaleUp();
                 $jobs = Craft::$app->queue->getTotalDelayed() + Craft::$app->queue->getTotalWaiting() + Craft::$app->queue->getTotalReserved();
 
                 if ($jobs == 0) {
-                    $autoscaler->scale(0);
+                    $this->autoscaler->scale(0);
                 }
             });
         }
+    }
+
+    /**
+     * Reconciles pending pushes after Craft has released its queue mutex.
+     */
+    private function flushPendingScaleUp(): void
+    {
+        if (!$this->pendingScaleUp) {
+            return;
+        }
+        $this->pendingScaleUp = false;
+        $jobs = Craft::$app->queue->getTotalDelayed() + Craft::$app->queue->getTotalWaiting();
+        $quantity = (int) min(ceil($jobs / 100), 10);
+
+        $this->autoscaler->scale($quantity, true);
     }
 
     /**
