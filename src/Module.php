@@ -7,7 +7,6 @@ use craft\awss3\Fs;
 use craft\contactform\models\Submission;
 use craft\fs\Local;
 use craft\helpers\App;
-use craft\helpers\Session;
 use craft\mail\transportadapters\Smtp;
 use craft\queue\Queue;
 use craft\web\Request;
@@ -137,7 +136,9 @@ class Module extends \yii\base\Module
                     }
 
                     // Release the response and session before calling Heroku.
-                    Session::close();
+                    if (Craft::$app->has('session', true)) {
+                        Craft::$app->getSession()->close();
+                    }
                     if (function_exists('fastcgi_finish_request')) {
                         fastcgi_finish_request();
                     }
