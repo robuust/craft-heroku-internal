@@ -101,14 +101,31 @@ class Module extends \yii\base\Module
             // Defer proxy pushes, which can occur inside Craft's retry mutex.
             Event::on(BaseQueue::class, BaseQueue::EVENT_AFTER_PUSH, function (PushEvent $event) {
                 $this->pendingScaleUp = true;
-                if ($event->sender === Craft::$app->queue) {
+                if (Craft::$app->getRequest()->getIsConsoleRequest() && $event->sender === Craft::$app->queue) {
                     $this->flushPendingScaleUp();
                 }
             });
 
             // Retried proxy jobs have no outer Craft afterPush event. Flush them
             // after the request or before the next iteration of a long-lived worker.
-            Event::on(Application::class, Application::EVENT_AFTER_REQUEST, $this->flushPendingScaleUp(...));
+            if (Craft::$app->getRequest()->getIsConsoleRequest()) {
+                Event::on(Application::class, Application::EVENT_AFTER_REQUEST, $this->flushPendingScaleUp(...));
+            } else {
+                Event::on(Response::class, Response::EVENT_AFTER_SEND, function () {
+                    if (!$this->pendingScaleUp) {
+                        return;
+                    }
+
+                    // Release the response and session before calling Heroku.
+                    if (Craft::$app->has('session', true)) {
+                        Craft::$app->getSession()->close();
+                    }
+                    if (function_exists('fastcgi_finish_request')) {
+                        fastcgi_finish_request();
+                    }
+                    $this->flushPendingScaleUp();
+                });
+            }
             Event::on(CliQueue::class, CliQueue::EVENT_WORKER_LOOP, $this->flushPendingScaleUp(...));
 
             // Reconcile pending startup and stop workers only when all jobs finish.
