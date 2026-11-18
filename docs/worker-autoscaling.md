@@ -10,7 +10,7 @@ existing direct Heroku behavior. A queue push can only
 increase the worker count, using one worker per 100 waiting or delayed jobs, up to
 10 workers.
 
-Normal Craft pushes reconcile after the outer Craft `afterPush` event. Proxy
+Console Craft pushes reconcile after the outer Craft `afterPush` event. Proxy
 pushes only mark startup as pending: Craft's `retry()` and `retryAll()` can emit
 them while holding the global queue mutex. Pending pushes are coalesced and
 reconciled from fresh queue counts at the end of the request, the next Yii CLI
@@ -50,6 +50,11 @@ An attempt may need a formation GET followed by a PATCH; account for both
 requests in the caller's execution budget. Requests are never retried inline.
 
 Use a shared persistent cache and mutex backend across application dynos.
+Web requests reconcile pushed jobs after sending the response and closing the
+session. PHP-FPM finishes the client connection before contacting Heroku, so
+startup latency does not delay the response. Console pushes remain immediate.
+This still occupies a PHP-FPM worker until reconciliation completes.
+
 The default filesystem cache does not share cooldowns between dynos. Formation
 quantities and sizes are cached for one hour, with state scoped by Heroku app name.
 A quantity cached by an earlier adapter version is refreshed when its size is
