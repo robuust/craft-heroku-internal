@@ -56,7 +56,6 @@ class Module extends \yii\base\Module
             throw new RuntimeException('MAILER_DSN environment variable is not set.');
         }
 
-        // Configure SMTP mailer
         if ($dsn) {
             $config = App::mailerConfig();
             $config['transport'] = [
